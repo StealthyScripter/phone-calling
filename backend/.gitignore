@@ -1,0 +1,71 @@
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.*.local
+
+# Logs
+logs/
+*.log
+*.log.*
+log/
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Build outputs
+dist/
+build/
+tmp/
+temp/
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage/
+.nyc_output/
+jest-*.json
+
+# PM2
+pids/
+*.pid
+*.log
+
+# VS Code
+.vscode/
+.history/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Twilio recordings and temp media files (if saved locally)
+recordings/
+media/
+*.mp3
+*.wav
+
+# Docker
+docker-compose.override.yml
+docker-compose.debug.yml
+Dockerfile.local
+.docker/
+.dockerignore
+
+# Asterisk specific (if AGI scripts are copied to /var/lib/asterisk/agi-bin/)
+# Exclude if you store them locally before deployment
+asterisk/
+agi-bin/
+
+# Misc
+*.tgz
+.idea/
+*.sublime-project
+*.sublime-workspace

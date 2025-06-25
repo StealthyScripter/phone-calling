@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Calling MVP</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>📞 Phone Calling App</h1>
+        
+        <div class="call-section">
+            <h2>Make a Call</h2>
+            <input type="tel" id="phoneNumber" placeholder="+1234567890" />
+            <button onclick="makeCall()">📞 Call</button>
+        </div>
+
+        <div class="active-calls">
+            <h2>Active Calls</h2>
+            <div id="callsList"></div>
+        </div>
+
+        <div class="logs">
+            <h2>Call Logs</h2>
+            <div id="logsList"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
