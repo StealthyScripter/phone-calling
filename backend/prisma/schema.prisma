@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  username    String   @unique
+  password    String   // hashed password
+  firstName   String?
+  lastName    String?
+  phoneNumber String?
+  role        String   @default("USER") // USER, ADMIN, SUPER_ADMIN
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastLogin   DateTime?
+
+  // Call history relationship
+  calls Call[]
+
+  @@map("users")
+}
+
+model Call {
+  id          String   @id @default(uuid())
+  callSid     String   @unique // Twilio Call SID
+  userId      String
+  direction   String   // INBOUND, OUTBOUND
+  fromNumber  String
+  toNumber    String
+  status      String   // INITIATED, RINGING, ANSWERED, COMPLETED, FAILED, BUSY, NO_ANSWER, CANCELED
+  duration    Int?     // in seconds
+  startTime   DateTime
+  endTime     DateTime?
+  cost        Float?   // call cost if available
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("calls")
+}
