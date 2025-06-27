@@ -46,6 +46,17 @@ pids/
 .DS_Store
 Thumbs.db
 
+# Database files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Database backups
+*.backup
+*.bak
+backup/
+
 # Twilio recordings and temp media files (if saved locally)
 recordings/
 media/
@@ -69,3 +80,13 @@ agi-bin/
 .idea/
 *.sublime-project
 *.sublime-workspace
+
+# SQLite journal files
+*.db-journal
+*.sqlite-journal
+*.sqlite3-journal
+
+# Development database (keep sample/seed data in version control if needed)
+phonecall.db
+development.db
+test.db

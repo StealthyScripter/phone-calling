@@ -1,6 +1,9 @@
 const twilio = require('twilio');
 const callManager = require('../utils/callManager');
 const { logWebhook, logCall, logError } = require('../utils/logger');
+const { updateCallHistoryFromWebhook } = require('./callController');
+const User = require('../models/user.model');
+const Contact = require('../models/contact.model');
 
 /**
  * ===================================
@@ -23,16 +26,43 @@ const handleIncomingCall = async (req, res) => {
         
         logWebhook('incoming_call', req.body);
 
-        // Store pending incoming call
+        // Try to find if this is from a known contact/user
+        let associatedUser = null;
+        let associatedContact = null;
+
+        // Look for contacts with this phone number
+        // In a real app, you might have logic to determine which user should receive the call
+        try {
+            // For demo purposes, we'll look for any contact with this phone number
+            // and use the first user we find. In production, you'd have better routing logic.
+            const contacts = await Contact.search(From, null, { limit: 1 });
+            if (contacts.length > 0) {
+                associatedContact = contacts[0];
+                associatedUser = await User.findById(associatedContact.user_id);
+            }
+        } catch (error) {
+            logError('Finding associated contact for incoming call', error, { From });
+        }
+
+        // Store pending incoming call with enhanced info
         await callManager.addPendingCall(CallSid, {
             from: From,
             to: To,
-            direction: 'inbound'
+            direction: 'inbound',
+            user_id: associatedUser ? associatedUser.id : null,
+            contact_id: associatedContact ? associatedContact.id : null,
+            contact_name: associatedContact ? associatedContact.name : null
         });
 
         // Generate TwiML to pause and check for user response
         const twiml = new twilio.twiml.VoiceResponse();
-        twiml.say('Please hold while we connect you.');
+        
+        if (associatedContact) {
+            twiml.say(`Incoming call from ${associatedContact.name}. Please hold while we connect you.`);
+        } else {
+            twiml.say('Please hold while we connect you.');
+        }
+        
         twiml.pause({ length: 2 });
         twiml.redirect(`/webhooks/check-status/${CallSid}`);
         
@@ -79,7 +109,11 @@ const checkCallStatus = async (req, res) => {
         switch (callInfo.status) {
             case 'accepted':
                 logCall('connecting', callSid);
-                twiml.say('Your call has been accepted. Connecting now.');
+                if (callInfo.contact_name) {
+                    twiml.say(`Your call has been accepted. Connecting to ${callInfo.contact_name} now.`);
+                } else {
+                    twiml.say('Your call has been accepted. Connecting now.');
+                }
                 // Here you would typically dial to the user's device
                 twiml.dial({ timeout: 30 }, process.env.USER_PHONE_NUMBER || '+1234567890');
                 await callManager.removePendingCall(callSid);
@@ -90,6 +124,14 @@ const checkCallStatus = async (req, res) => {
                 twiml.say('Your call has been declined. Thank you for calling.');
                 twiml.hangup();
                 await callManager.removePendingCall(callSid);
+                
+                // Update call history if associated with a user
+                if (callInfo.user_id) {
+                    await updateCallHistoryFromWebhook(callSid, {
+                        CallStatus: 'rejected',
+                        CallDuration: 0
+                    });
+                }
                 break;
 
             default:
@@ -126,15 +168,29 @@ const checkCallStatus = async (req, res) => {
  * @param {Object} req.body - Twilio webhook payload for answered call
  * @returns {string} TwiML response for outbound call
  */
-const handleOutboundAnswer = (req, res) => {
+const handleOutboundAnswer = async (req, res) => {
     try {
         const { CallSid, From, To } = req.body;
         
         logWebhook('outbound_answer', req.body);
         
-        // Simple greeting for outbound calls
+        // Get call info to check for contact details
+        const callInfo = await callManager.getCall(CallSid);
+        let contactName = null;
+        
+        if (callInfo && callInfo.contact_id) {
+            const contact = await Contact.findById(callInfo.contact_id);
+            contactName = contact ? contact.name : null;
+        }
+        
+        // Generate personalized greeting
         const twiml = new twilio.twiml.VoiceResponse();
-        twiml.say('Hello! You are connected through our calling application.');
+        
+        if (contactName) {
+            twiml.say(`Hello! You are now connected to ${contactName} through our calling application.`);
+        } else {
+            twiml.say('Hello! You are connected through our calling application.');
+        }
         
         // Keep the call alive - in production, you might connect to user's device
         twiml.pause({ length: 1 });
@@ -190,6 +246,9 @@ const handleStatusUpdate = async (req, res) => {
 
         await callManager.updateCall(CallSid, updateData);
 
+        // Update call history in database
+        await updateCallHistoryFromWebhook(CallSid, req.body);
+
         // Log significant status changes
         if (['answered', 'completed', 'failed', 'busy', 'no-answer'].includes(CallStatus)) {
             logCall('status_changed', CallSid, { 
@@ -198,6 +257,11 @@ const handleStatusUpdate = async (req, res) => {
                 to: To,
                 duration: CallDuration 
             });
+        }
+
+        // Auto-create contact for unknown incoming callers if call was answered
+        if (CallStatus === 'answered') {
+            await autoCreateContactIfNeeded(CallSid, From, To);
         }
 
         // Clean up completed/failed calls after a delay
@@ -266,8 +330,61 @@ const webhookHealthCheck = (req, res) => {
             answer: '/webhooks/answer', 
             status: '/webhooks/status',
             reject: '/webhooks/reject'
-        }
+        },
+        database: 'connected' // Could add actual database health check here
     });
+};
+
+/**
+ * ===================================
+ * HELPER FUNCTIONS
+ * ===================================
+ */
+
+/**
+ * Auto-create contact for unknown incoming callers
+ * @param {string} callSid - Call SID
+ * @param {string} fromNumber - Caller phone number
+ * @param {string} toNumber - Called number
+ */
+const autoCreateContactIfNeeded = async (callSid, fromNumber, toNumber) => {
+    try {
+        const callInfo = await callManager.getCall(callSid);
+        
+        // Only auto-create for incoming calls with an associated user
+        if (!callInfo || callInfo.direction !== 'inbound' || !callInfo.user_id) {
+            return;
+        }
+
+        // Check if contact already exists
+        const existingContact = await Contact.findByPhone(fromNumber, callInfo.user_id);
+        if (existingContact) {
+            return; // Contact already exists
+        }
+
+        // Create contact with basic info
+        const contact = await Contact.create({
+            user_id: callInfo.user_id,
+            name: `Unknown Caller (${fromNumber})`,
+            phone: fromNumber,
+            notes: `Auto-created from incoming call on ${new Date().toLocaleDateString()}`
+        });
+
+        // Update call info with the new contact
+        await callManager.updateCall(callSid, {
+            contact_id: contact.id
+        });
+
+        logCall('contact_auto_created', callSid, {
+            contact_id: contact.id,
+            phone: fromNumber,
+            user_id: callInfo.user_id
+        });
+
+    } catch (error) {
+        logError('Auto-creating contact', error, { callSid, fromNumber });
+        // Don't throw - this is not critical for call handling
+    }
 };
 
 module.exports = {

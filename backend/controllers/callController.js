@@ -1,6 +1,8 @@
 const twilioClient = require('../utils/twilioClient');
 const callManager = require('../utils/callManager');
 const { logCall, logError } = require('../utils/logger');
+const User = require('../models/user.model');
+const Contact = require('../models/contact.model');
 
 /**
  * ===================================
@@ -11,13 +13,14 @@ const { logCall, logError } = require('../utils/logger');
 /**
  * Initiate an outbound call
  * @route POST /api/calls/make
- * @param {Object} req.body - Request body containing phone number
+ * @param {Object} req.body - Request body containing phone number and optional user_id
  * @param {string} req.body.to - Destination phone number
+ * @param {number} req.body.user_id - Optional user ID for call history
  * @returns {Object} Call initiation response with SID and status
  */
 const makeCall = async (req, res) => {
     try {
-        const { to } = req.body;
+        const { to, user_id } = req.body;
         
         // Input validation
         if (!to) {
@@ -26,6 +29,22 @@ const makeCall = async (req, res) => {
                 error: 'Phone number is required',
                 success: false 
             });
+        }
+
+        // Validate user if provided
+        let user = null;
+        let contact = null;
+        if (user_id) {
+            user = await User.findById(user_id);
+            if (!user) {
+                return res.status(404).json({ 
+                    error: 'User not found',
+                    success: false 
+                });
+            }
+            
+            // Try to find existing contact for this phone number
+            contact = await Contact.findByPhone(to, user_id);
         }
 
         // Initiate call via Twilio
@@ -42,21 +61,41 @@ const makeCall = async (req, res) => {
             to: to,
             from: process.env.TWILIO_PHONE_NUMBER,
             sid: call.sid,
-            direction: 'outbound'
+            direction: 'outbound',
+            user_id: user_id || null,
+            contact_id: contact ? contact.id : null
         });
 
-        logCall('initiated', call.sid, { to, from: process.env.TWILIO_PHONE_NUMBER });
+        // Add call to user's history if user is specified
+        if (user) {
+            await user.addCallHistory({
+                call_sid: call.sid,
+                direction: 'outbound',
+                phone_number: to,
+                status: 'initiated',
+                started_at: new Date().toISOString(),
+                contact_id: contact ? contact.id : null
+            });
+        }
+
+        logCall('initiated', call.sid, { 
+            to, 
+            from: process.env.TWILIO_PHONE_NUMBER,
+            user_id,
+            contact_name: contact ? contact.name : null
+        });
 
         res.json({
             success: true,
             callSid: call.sid,
             status: 'calling',
             to: to,
+            contact: contact ? contact.toJSON() : null,
             message: 'Call initiated successfully'
         });
 
     } catch (error) {
-        logError('Call initiation', error, { to: req.body.to });
+        logError('Call initiation', error, { to: req.body.to, user_id: req.body.user_id });
         res.status(500).json({ 
             error: 'Failed to make call',
             success: false,
@@ -94,6 +133,17 @@ const hangupCall = async (req, res) => {
             status: 'completed',
             endTime: new Date().toISOString()
         });
+
+        // Update call history in database if user is associated
+        if (callInfo.user_id) {
+            const user = await User.findById(callInfo.user_id);
+            if (user) {
+                await user.updateCallHistory(callSid, {
+                    status: 'completed',
+                    ended_at: new Date().toISOString()
+                });
+            }
+        }
         
         // Remove from active storage after brief delay for webhook processing
         setTimeout(() => callManager.removeCall(callSid), 2000);
@@ -125,11 +175,13 @@ const hangupCall = async (req, res) => {
  * Accept an incoming call
  * @route POST /api/calls/accept/:callSid
  * @param {string} req.params.callSid - Twilio call SID to accept
+ * @param {Object} req.body - Optional user_id for call history
  * @returns {Object} Call acceptance confirmation
  */
 const acceptIncomingCall = async (req, res) => {
     try {
         const { callSid } = req.params;
+        const { user_id } = req.body;
         
         const callInfo = await callManager.getCall(callSid);
         if (!callInfo) {
@@ -142,13 +194,32 @@ const acceptIncomingCall = async (req, res) => {
         // Update call status to accepted
         await callManager.updateCall(callSid, { 
             status: 'accepted',
-            acceptedAt: new Date().toISOString()
+            acceptedAt: new Date().toISOString(),
+            user_id: user_id || null
         });
 
         // Remove from pending calls
         await callManager.removePendingCall(callSid);
 
-        logCall('accepted', callSid, { from: callInfo.from });
+        // Add to user's call history if user is specified
+        if (user_id) {
+            const user = await User.findById(user_id);
+            if (user) {
+                // Try to find existing contact for this phone number
+                const contact = await Contact.findByPhone(callInfo.from, user_id);
+                
+                await user.addCallHistory({
+                    call_sid: callSid,
+                    direction: 'inbound',
+                    phone_number: callInfo.from,
+                    status: 'accepted',
+                    started_at: new Date().toISOString(),
+                    contact_id: contact ? contact.id : null
+                });
+            }
+        }
+
+        logCall('accepted', callSid, { from: callInfo.from, user_id });
 
         res.json({ 
             success: true, 
@@ -169,11 +240,13 @@ const acceptIncomingCall = async (req, res) => {
  * Reject an incoming call
  * @route POST /api/calls/reject/:callSid
  * @param {string} req.params.callSid - Twilio call SID to reject
+ * @param {Object} req.body - Optional user_id for call history
  * @returns {Object} Call rejection confirmation
  */
 const rejectIncomingCall = async (req, res) => {
     try {
         const { callSid } = req.params;
+        const { user_id } = req.body;
         
         const callInfo = await callManager.getCall(callSid);
         if (!callInfo) {
@@ -192,7 +265,26 @@ const rejectIncomingCall = async (req, res) => {
         // Remove from pending calls
         await callManager.removePendingCall(callSid);
 
-        logCall('rejected', callSid, { from: callInfo.from });
+        // Add to user's call history if user is specified
+        if (user_id) {
+            const user = await User.findById(user_id);
+            if (user) {
+                // Try to find existing contact for this phone number
+                const contact = await Contact.findByPhone(callInfo.from, user_id);
+                
+                await user.addCallHistory({
+                    call_sid: callSid,
+                    direction: 'inbound',
+                    phone_number: callInfo.from,
+                    status: 'rejected',
+                    started_at: new Date().toISOString(),
+                    ended_at: new Date().toISOString(),
+                    contact_id: contact ? contact.id : null
+                });
+            }
+        }
+
+        logCall('rejected', callSid, { from: callInfo.from, user_id });
 
         res.json({ 
             success: true, 
@@ -229,10 +321,24 @@ const getActiveCalls = async (req, res) => {
             call.status && !['completed', 'failed', 'rejected'].includes(call.status)
         );
 
+        // Enrich calls with contact information if available
+        const enrichedCalls = await Promise.all(
+            activeCalls.map(async (call) => {
+                if (call.contact_id) {
+                    const contact = await Contact.findById(call.contact_id);
+                    return {
+                        ...call,
+                        contact: contact ? contact.toJSON() : null
+                    };
+                }
+                return call;
+            })
+        );
+
         res.json({ 
             success: true,
-            calls: activeCalls,
-            count: activeCalls.length
+            calls: enrichedCalls,
+            count: enrichedCalls.length
         });
 
     } catch (error) {
@@ -254,10 +360,25 @@ const getPendingCalls = async (req, res) => {
     try {
         const pendingCalls = await callManager.getPendingCalls();
 
+        // Enrich pending calls with contact information if available
+        const enrichedCalls = await Promise.all(
+            pendingCalls.map(async (call) => {
+                // Try to find contact by phone number for any user (simplified for demo)
+                // In production, you'd want to be more specific about which user context
+                const contacts = await Contact.search(call.from, null, { limit: 1 });
+                const contact = contacts.length > 0 ? contacts[0] : null;
+                
+                return {
+                    ...call,
+                    contact: contact ? contact.toJSON() : null
+                };
+            })
+        );
+
         res.json({ 
             success: true,
-            pendingCalls,
-            count: pendingCalls.length
+            pendingCalls: enrichedCalls,
+            count: enrichedCalls.length
         });
 
     } catch (error) {
@@ -288,9 +409,22 @@ const getCallDetails = async (req, res) => {
             });
         }
 
+        // Enrich with contact and user information
+        let enrichedCall = { ...callInfo };
+
+        if (callInfo.contact_id) {
+            const contact = await Contact.findById(callInfo.contact_id);
+            enrichedCall.contact = contact ? contact.toJSON() : null;
+        }
+
+        if (callInfo.user_id) {
+            const user = await User.findById(callInfo.user_id);
+            enrichedCall.user = user ? user.toJSON() : null;
+        }
+
         res.json({ 
             success: true,
-            call: callInfo
+            call: enrichedCall
         });
 
     } catch (error) {
@@ -299,6 +433,51 @@ const getCallDetails = async (req, res) => {
             error: 'Failed to fetch call details',
             success: false 
         });
+    }
+};
+
+/**
+ * ===================================
+ * HELPER FUNCTIONS
+ * ===================================
+ */
+
+/**
+ * Update call history in database when call status changes
+ * @param {string} callSid - Twilio call SID
+ * @param {Object} statusData - Status update data from webhook
+ */
+const updateCallHistoryFromWebhook = async (callSid, statusData) => {
+    try {
+        const callInfo = await callManager.getCall(callSid);
+        if (!callInfo || !callInfo.user_id) {
+            return; // No user associated with this call
+        }
+
+        const user = await User.findById(callInfo.user_id);
+        if (!user) {
+            return;
+        }
+
+        const updates = {
+            status: statusData.CallStatus
+        };
+
+        // Add duration and end time for completed calls
+        if (statusData.CallStatus === 'completed' && statusData.CallDuration) {
+            updates.duration = parseInt(statusData.CallDuration);
+            updates.ended_at = new Date().toISOString();
+        }
+
+        await user.updateCallHistory(callSid, updates);
+        
+        logCall('history_updated', callSid, { 
+            user_id: callInfo.user_id, 
+            status: statusData.CallStatus 
+        });
+
+    } catch (error) {
+        logError('Updating call history from webhook', error, { callSid, statusData });
     }
 };
 
@@ -314,5 +493,8 @@ module.exports = {
     // Status & monitoring
     getActiveCalls,
     getPendingCalls,
-    getCallDetails
+    getCallDetails,
+    
+    // Helper functions
+    updateCallHistoryFromWebhook
 };
