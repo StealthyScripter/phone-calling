@@ -5,13 +5,80 @@ let users = [];
 let contacts = [];
 let currentUser = null;
 let callHistory = [];
+let socket = null;
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
     await loadInitialData();
     setupEventListeners();
-    startPolling();
 });
+
+// WebSocket connection and real-time updates
+function initializeWebSocket() {
+    socket = io();
+    
+    socket.on('connect', () => {
+        console.log('📡 Connected to server');
+        addLog('📡 Connected to real-time updates');
+        document.getElementById('connectionStatus').textContent = '📡 Connected';
+        document.getElementById('connectionStatus').className = 'connection-status connected';
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('📡 Disconnected from server');
+        addLog('📡 Disconnected from real-time updates');
+        document.getElementById('connectionStatus').textContent = '📡 Disconnected';
+        document.getElementById('connectionStatus').className = 'connection-status disconnected';
+    });
+    
+    // Listen for call events
+    socket.on('incomingCall', (data) => {
+        addLog(`📞 Incoming call from ${data.contact ? data.contact.name : data.from}`);
+        loadPendingCalls();
+        
+        // Show browser notification if supported
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Incoming Call', {
+                body: `Call from ${data.contact ? data.contact.name : data.from}`,
+                icon: '📞'
+            });
+        }
+    });
+    
+    socket.on('callInitiated', (data) => {
+        addLog(`📞 Calling ${data.contact ? data.contact.name : data.to}...`);
+        loadActiveCalls();
+    });
+    
+    socket.on('callAccepted', (data) => {
+        addLog(`✅ Call accepted (${data.callSid})`);
+        loadPendingCalls();
+        loadActiveCalls();
+    });
+    
+    socket.on('callRejected', (data) => {
+        addLog(`❌ Call rejected (${data.callSid})`);
+        loadPendingCalls();
+    });
+    
+    socket.on('callEnded', (data) => {
+        addLog(`📴 Call ended (${data.callSid})`);
+        loadActiveCalls();
+    });
+    
+    socket.on('callStatusUpdate', (data) => {
+        if (['answered', 'completed', 'failed'].includes(data.status)) {
+            addLog(`📞 Call ${data.status}: ${data.from} → ${data.to}`);
+            loadActiveCalls();
+            loadPendingCalls();
+        }
+    });
+    
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
 
 // Tab Management
 function showTab(tabName) {
@@ -57,6 +124,10 @@ async function loadInitialData() {
         
         populateUserSelects();
         updateQuickContacts();
+        
+        // Initialize WebSocket instead of polling
+        initializeWebSocket();
+        
     } catch (error) {
         console.error('Error loading initial data:', error);
         showToast('Failed to load initial data', 'error');
@@ -662,20 +733,6 @@ function showToast(message, type = 'info') {
     setTimeout(() => {
         toast.remove();
     }, 3000);
-}
-
-// Polling for real-time updates
-function startPolling() {
-    setInterval(async () => {
-        try {
-            await Promise.all([
-                loadActiveCalls(),
-                loadPendingCalls()
-            ]);
-        } catch (error) {
-            console.error('Error during polling:', error);
-        }
-    }, 5000); // Poll every 5 seconds
 }
 
 // View functions

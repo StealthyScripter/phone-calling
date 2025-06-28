@@ -1,4 +1,3 @@
-// test-env.js - Create this file in your backend directory
 require('dotenv').config();
 
 console.log('=== Environment Variables Test ===\n');
