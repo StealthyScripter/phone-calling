@@ -1,37 +1,53 @@
 {
   "expo": {
-    "name": "react-native-frontend",
-    "slug": "react-native-frontend",
+    "name": "SmartConnect",
+    "slug": "smartconnect-calling",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "reactnativefrontend",
+    "icon": "./assets/images/logo.png",
+    "scheme": "smartconnect",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#667eea"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smartconnect.calling",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs microphone access to make calls",
+        "NSContactsUsageDescription": "This app needs contacts access to show your contacts"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundColor": "#667eea"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.smartconnect.calling",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS",
+        "android.permission.CALL_PHONE",
+        "android.permission.MANAGE_OWN_CALLS"
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/logo.png"
     },
     "plugins": [
       "expo-router",
       [
-        "expo-splash-screen",
+        "expo-notifications",
         {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "icon": "./assets/images/logo.png",
+          "color": "#667eea"
         }
       ]
     ],
