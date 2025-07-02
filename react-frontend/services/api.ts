@@ -1,120 +1,111 @@
-import { User, Contact, Call } from '../types';
+import { Contact, CallHistory, CallApiResponse, User } from '../types';
 
-const BASE_URL = 'http://localhost:3000/api';
+const API_BASE_URL = 'http://localhost:3000/api';
 
-export class ApiService {
-  // Call Management
-  static async makeCall(to: string): Promise<Call> {
-    const response = await fetch(`${BASE_URL}/calls/make`, {
+class ApiServiceClass {
+  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+        ...options,
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error(`API request failed for ${endpoint}:`, error);
+      throw error;
+    }
+  }
+
+  // User endpoints
+  async getUsers(): Promise<User[]> {
+    const response = await this.request<{ users: User[]; success: boolean }>('/users');
+    return response.users || [];
+  }
+
+  async createUser(userData: Partial<User>): Promise<User> {
+    return this.request<User>('/users', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to }),
+      body: JSON.stringify(userData),
     });
-    if (!response.ok) throw new Error('Failed to make call');
-    return response.json();
   }
 
-  static async hangupCall(callSid: string): Promise<void> {
-    const response = await fetch(`${BASE_URL}/calls/hangup/${callSid}`, {
+  // Contact endpoints
+  async getContacts(userId: number): Promise<Contact[]> {
+    const response = await this.request<{ contacts: Contact[]; success: boolean }>(`/users/${userId}/contacts`);
+    return response.contacts || [];
+  }
+
+  async createContact(contactData: Partial<Contact>): Promise<Contact> {
+    return this.request<Contact>('/contacts', {
       method: 'POST',
+      body: JSON.stringify(contactData),
     });
-    if (!response.ok) throw new Error('Failed to hangup call');
   }
 
-  static async acceptCall(callSid: string): Promise<void> {
-    const response = await fetch(`${BASE_URL}/calls/accept/${callSid}`, {
-      method: 'POST',
-    });
-    if (!response.ok) throw new Error('Failed to accept call');
-  }
-
-  static async rejectCall(callSid: string): Promise<void> {
-    const response = await fetch(`${BASE_URL}/calls/reject/${callSid}`, {
-      method: 'POST',
-    });
-    if (!response.ok) throw new Error('Failed to reject call');
-  }
-
-  static async getActiveCalls(): Promise<Call[]> {
-    const response = await fetch(`${BASE_URL}/calls/active`);
-    if (!response.ok) throw new Error('Failed to get active calls');
-    return response.json();
-  }
-
-  static async getPendingCalls(): Promise<Call[]> {
-    const response = await fetch(`${BASE_URL}/calls/pending`);
-    if (!response.ok) throw new Error('Failed to get pending calls');
-    return response.json();
-  }
-
-  // User Management
-  static async getUsers(): Promise<User[]> {
-    const response = await fetch(`${BASE_URL}/users`);
-    if (!response.ok) throw new Error('Failed to get users');
-    return response.json();
-  }
-
-  static async createUser(user: Omit<User, 'id'>): Promise<User> {
-    const response = await fetch(`${BASE_URL}/users`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(user),
-    });
-    if (!response.ok) throw new Error('Failed to create user');
-    return response.json();
-  }
-
-  static async getUserDetails(id: number): Promise<User> {
-    const response = await fetch(`${BASE_URL}/users/${id}`);
-    if (!response.ok) throw new Error('Failed to get user details');
-    return response.json();
-  }
-
-  static async getUserCallStats(id: number): Promise<any> {
-    const response = await fetch(`${BASE_URL}/users/${id}/call-stats`);
-    if (!response.ok) throw new Error('Failed to get call stats');
-    return response.json();
-  }
-
-  // Contact Management
-  static async getContacts(userId: number): Promise<Contact[]> {
-    const response = await fetch(`${BASE_URL}/users/${userId}/contacts`);
-    if (!response.ok) throw new Error('Failed to get contacts');
-    return response.json();
-  }
-
-  static async createContact(contact: Omit<Contact, 'id'>): Promise<Contact> {
-    const response = await fetch(`${BASE_URL}/contacts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(contact),
-    });
-    if (!response.ok) throw new Error('Failed to create contact');
-    return response.json();
-  }
-
-  static async updateContact(id: number, contact: Partial<Contact>): Promise<Contact> {
-    const response = await fetch(`${BASE_URL}/contacts/${id}`, {
+  async updateContact(contactId: number, contactData: Partial<Contact>): Promise<Contact> {
+    return this.request<Contact>(`/contacts/${contactId}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(contact),
+      body: JSON.stringify(contactData),
     });
-    if (!response.ok) throw new Error('Failed to update contact');
-    return response.json();
   }
 
-  static async deleteContact(id: number): Promise<void> {
-    const response = await fetch(`${BASE_URL}/contacts/${id}`, {
+  async deleteContact(contactId: number): Promise<void> {
+    await this.request(`/contacts/${contactId}`, {
       method: 'DELETE',
     });
-    if (!response.ok) throw new Error('Failed to delete contact');
   }
 
-  static async toggleFavorite(id: number): Promise<Contact> {
-    const response = await fetch(`${BASE_URL}/contacts/${id}/toggle-favorite`, {
+  async toggleFavorite(contactId: number): Promise<Contact> {
+    return this.request<Contact>(`/contacts/${contactId}/toggle-favorite`, {
       method: 'POST',
     });
-    if (!response.ok) throw new Error('Failed to toggle favorite');
-    return response.json();
+  }
+
+  // Call endpoints
+  async makeCall(phoneNumber: string, userId: number = 1): Promise<CallApiResponse> {
+    return this.request<CallApiResponse>('/calls/make', {
+      method: 'POST',
+      body: JSON.stringify({
+        to: phoneNumber,
+        user_id: userId,
+      }),
+    });
+  }
+
+  async hangupCall(callSid: string): Promise<CallApiResponse> {
+    return this.request<CallApiResponse>(`/calls/hangup/${callSid}`, {
+      method: 'POST',
+    });
+  }
+
+  async getActiveCalls(): Promise<any[]> {
+    const response = await this.request<{ calls: any[]; success: boolean }>('/calls/active');
+    return response.calls || [];
+  }
+
+  async getPendingCalls(): Promise<any[]> {
+    const response = await this.request<{ calls: any[]; success: boolean }>('/calls/pending');
+    return response.calls || [];
+  }
+
+  async getCallHistory(userId: number): Promise<CallHistory[]> {
+    const response = await this.request<{ calls: CallHistory[]; success: boolean }>(`/users/${userId}/call-history`);
+    return response.calls || [];
+  }
+
+  // Health check
+  async healthCheck(): Promise<any> {
+    return this.request('/health');
   }
 }
+
+export const ApiService = new ApiServiceClass();

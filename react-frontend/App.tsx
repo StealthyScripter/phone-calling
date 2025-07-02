@@ -1,75 +1,56 @@
 import React, { useEffect, useState } from 'react';
-import { Text as RNText } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Colors } from './constants/Colors';
 import { DialerScreen } from './screens/DialerScreen';
 import { ContactsScreen } from './screens/ContactsScreen';
+import { RecentCallsScreen } from './screens/RecentCalls';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { ActiveCallScreen } from './screens/ActiveCallScreen';
+import { ModernTabBar } from './components/BottomNavigation';
 import { socketService } from './services/socket';
 import { Call } from './types';
+import { DarkTheme as NavigationDarkTheme } from '@react-navigation/native';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 const TabNavigator = () => (
   <Tab.Navigator
+    tabBar={(props) => <ModernTabBar {...props} />}
     screenOptions={{
-      tabBarStyle: {
-        backgroundColor: Colors.primary,
-        borderTopColor: Colors.borderColor,
-        borderTopWidth: 1,
-      },
-      tabBarActiveTintColor: Colors.accent,
-      tabBarInactiveTintColor: Colors.textSecondary,
-      headerStyle: {
-        backgroundColor: Colors.primary,
-        borderBottomColor: Colors.borderColor,
-        borderBottomWidth: 1,
-      },
-      headerTintColor: Colors.textPrimary,
-      headerTitleStyle: {
-        fontWeight: '600',
-      },
+      headerShown: false,
     }}
   >
     <Tab.Screen 
       name="Dialer" 
       component={DialerScreen}
       options={{
-        tabBarIcon: ({ color }) => (
-          <RNText style={{ color, fontSize: 20 }}>📞</RNText>
-        ),
+        tabBarLabel: 'Dialer',
+      }}
+    />
+    <Tab.Screen 
+      name="Recent" 
+      component={RecentCallsScreen}
+      options={{
+        tabBarLabel: 'Recent',
       }}
     />
     <Tab.Screen 
       name="Contacts" 
       component={ContactsScreen}
       options={{
-        tabBarIcon: ({ color }) => (
-          <RNText style={{ color, fontSize: 20 }}>👥</RNText>
-        ),
-      }}
-    />
-    <Tab.Screen 
-      name="Profile" 
-      component={ProfileScreen}
-      options={{
-        tabBarIcon: ({ color }) => (
-          <RNText style={{ color, fontSize: 20 }}>👤</RNText>
-        ),
+        tabBarLabel: 'Contacts',
       }}
     />
     <Tab.Screen 
       name="Settings" 
       component={SettingsScreen}
       options={{
-        tabBarIcon: ({ color }) => (
-          <RNText style={{ color, fontSize: 20 }}>⚙️</RNText>
-        ),
+        tabBarLabel: 'Settings',
       }}
     />
   </Tab.Navigator>
@@ -113,32 +94,57 @@ export default function App() {
     setActiveCall(null);
   };
 
+  const navigationTheme = {
+    ...NavigationDarkTheme,
+    colors: {
+      primary: Colors.accent,
+      background: Colors.primary,
+      card: Colors.cardBackground,
+      text: Colors.textPrimary,
+      border: Colors.borderColor,
+      notification: Colors.accent,
+    },
+  };
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          cardStyle: { backgroundColor: Colors.primary },
-        }}
-      >
-        <Stack.Screen name="Main" component={TabNavigator} />
-        {activeCall && (
+    <>
+      <StatusBar style="light" backgroundColor={Colors.primary} />
+      <NavigationContainer theme={navigationTheme}>
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            cardStyle: { backgroundColor: Colors.primary },
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
+        >
+          <Stack.Screen name="Main" component={TabNavigator} />
           <Stack.Screen 
-            name="ActiveCall"
+            name="Profile"
+            component={ProfileScreen}
             options={{
               presentation: 'modal',
-              gestureEnabled: false,
+              gestureDirection: 'vertical',
             }}
-          >
-            {() => (
-              <ActiveCallScreen 
-                call={activeCall} 
-                onCallEnd={handleCallEnd}
-              />
-            )}
-          </Stack.Screen>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+          />
+          {activeCall && (
+            <Stack.Screen 
+              name="ActiveCall"
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+              }}
+            >
+              {() => (
+                <ActiveCallScreen 
+                  call={activeCall} 
+                  onCallEnd={handleCallEnd}
+                />
+              )}
+            </Stack.Screen>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </>
   );
 }

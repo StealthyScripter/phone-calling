@@ -1,339 +1,302 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
-  ScrollView, 
+  TouchableOpacity, 
   SafeAreaView,
-  TouchableOpacity,
-  Alert 
+  TextInput,
+  Alert,
+  StatusBar
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../constants/Colors';
-import { Avatar } from '../components/Avatar';
-import { Button } from '../components/Button';
-import { User, CallStats } from '../types';
-import { ApiService } from '../services/api';
+import { BackIcon, BatteryIcon } from '../components/Icons';
 
-export const ProfileScreen: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [callStats, setCallStats] = useState<CallStats | null>(null);
-  const [loading, setLoading] = useState(true);
+interface ProfileScreenProps {
+  navigation: any;
+}
 
-  useEffect(() => {
-    loadUserData();
-  }, []);
+export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
+  const [name, setName] = useState('John Doe');
+  const [email, setEmail] = useState('john.doe@example.com');
+  const [phone, setPhone] = useState('+1 (555) 123-4567');
 
-  const loadUserData = async () => {
-    try {
-      setLoading(true);
-      // Using userId 1 as default - in real app, get from auth context
-      const [userData, statsData] = await Promise.all([
-        ApiService.getUserDetails(1),
-        ApiService.getUserCallStats(1)
-      ]);
-      setUser(userData);
-      setCallStats(statsData);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load profile data');
-      console.error('Load profile error:', error);
-    } finally {
-      setLoading(false);
-    }
+  const handleUpdateProfile = () => {
+    Alert.alert('Success', 'Profile updated successfully');
   };
 
-  const StatCard = ({ 
-    title, 
-    value, 
-    subtitle 
-  }: {
-    title: string;
-    value: string | number;
-    subtitle?: string;
-  }) => (
-    <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statTitle}>{title}</Text>
-      {subtitle && <Text style={styles.statSubtitle}>{subtitle}</Text>}
-    </View>
-  );
-
-  const formatDuration = (seconds: number): string => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
-  };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading profile...</Text>
-        </View>
-      </SafeAreaView>
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: () => navigation.goBack() }
+      ]
     );
-  }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        {/* Profile Header */}
+    <LinearGradient
+      colors={Colors.backgroundGradient}
+      style={styles.container}
+    >
+      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <SafeAreaView style={styles.safeArea}>
+
+        {/* Header */}
         <View style={styles.header}>
-          <Avatar name={user?.name || 'User'} size={100} />
-          <View style={styles.profileInfo}>
-            <Text style={styles.name}>{user?.name || 'Unknown User'}</Text>
-            <Text style={styles.phone}>{user?.phone || 'No phone number'}</Text>
-            <Text style={styles.email}>{user?.email || 'No email'}</Text>
-          </View>
-          
-          <Button 
-            title="Edit Profile"
-            onPress={() => Alert.alert('Edit Profile', 'Edit profile functionality coming soon!')}
-            variant="secondary"
-          />
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <BackIcon size={20} color={Colors.accent} />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
         </View>
 
-        {/* Call Statistics */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Call Statistics</Text>
-          
-          <View style={styles.statsGrid}>
-            <StatCard
-              title="Total Calls"
-              value={callStats?.totalCalls || 0}
-              subtitle="All time"
-            />
-            
-            <StatCard
-              title="Talk Time"
-              value={formatDuration(callStats?.totalDuration || 0)}
-              subtitle="Total duration"
-            />
-            
-            <StatCard
-              title="Average Call"
-              value={formatDuration(callStats?.averageDuration || 0)}
-              subtitle="Per call"
-            />
-            
-            <StatCard
-              title="This Week"
-              value="12"
-              subtitle="Calls made"
-            />
-          </View>
+        {/* Profile Avatar */}
+        <View style={styles.profileHeader}>
+          <LinearGradient
+            colors={Colors.aiGradient}
+            style={styles.profileAvatar}
+          >
+            <Text style={styles.avatarText}>JD</Text>
+          </LinearGradient>
+          <Text style={styles.profileName}>John Doe</Text>
+          <Text style={styles.profileStatus}>Premium Member</Text>
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          
+        {/* Form */}
+        <View style={styles.form}>
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>Name</Text>
+            <TextInput
+              style={styles.formInput}
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter your name"
+              placeholderTextColor={Colors.textSecondary}
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>Email</Text>
+            <TextInput
+              style={styles.formInput}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Enter your email"
+              placeholderTextColor={Colors.textSecondary}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.formLabel}>Phone</Text>
+            <TextInput
+              style={styles.formInput}
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="Enter your phone"
+              placeholderTextColor={Colors.textSecondary}
+              keyboardType="phone-pad"
+            />
+          </View>
+
+          {/* Savings Summary */}
+          <View style={styles.savingsSummary}>
+            <Text style={styles.savingsTitle}>Total Savings This Month</Text>
+            <Text style={styles.savingsAmount}>$47.80</Text>
+            <Text style={styles.savingsDetails}>
+              152 calls • AI routing saved 68% on average
+            </Text>
+          </View>
+
+          {/* Action Buttons */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={styles.actionIcon}>📞</Text>
-              <Text style={styles.actionText}>Recent Calls</Text>
+            <TouchableOpacity 
+              style={styles.primaryButton}
+              onPress={handleUpdateProfile}
+            >
+              <LinearGradient
+                colors={Colors.aiGradient}
+                style={styles.primaryButtonGradient}
+              >
+                <Text style={styles.primaryButtonText}>Update Profile</Text>
+              </LinearGradient>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={styles.actionIcon}>👥</Text>
-              <Text style={styles.actionText}>Contacts</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={styles.actionIcon}>⚙️</Text>
-              <Text style={styles.actionText}>Settings</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionButton}>
-              <Text style={styles.actionIcon}>📊</Text>
-              <Text style={styles.actionText}>Analytics</Text>
+            <TouchableOpacity 
+              style={styles.secondaryButton}
+              onPress={handleSignOut}
+            >
+              <Text style={styles.secondaryButtonText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Recent Activity */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Activity</Text>
-          
-          <View style={styles.activityList}>
-            <View style={styles.activityItem}>
-              <View style={styles.activityIcon}>
-                <Text>📞</Text>
-              </View>
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityTitle}>Called +1 (555) 987-6543</Text>
-                <Text style={styles.activityTime}>2 hours ago • 5m 32s</Text>
-              </View>
-            </View>
-            
-            <View style={styles.activityItem}>
-              <View style={styles.activityIcon}>
-                <Text>📱</Text>
-              </View>
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityTitle}>Missed call from John Smith</Text>
-                <Text style={styles.activityTime}>4 hours ago</Text>
-              </View>
-            </View>
-            
-            <View style={styles.activityItem}>
-              <View style={styles.activityIcon}>
-                <Text>👥</Text>
-              </View>
-              <View style={styles.activityInfo}>
-                <Text style={styles.activityTitle}>Added new contact: Sarah Johnson</Text>
-                <Text style={styles.activityTime}>Yesterday</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
   },
-  loadingContainer: {
+  safeArea: {
     flex: 1,
-    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  statusBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 12,
   },
-  loadingText: {
-    color: Colors.textSecondary,
-    fontSize: 16,
+  statusTime: {
+    color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
   },
-  scrollView: {
-    flex: 1,
+  batteryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  batteryText: {
+    color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '600',
   },
   header: {
-    alignItems: 'center',
-    padding: 24,
+    paddingVertical: 10,
+    paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderColor,
   },
-  profileInfo: {
+  backButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 16,
-  },
-  name: {
-    color: Colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  phone: {
-    color: Colors.textSecondary,
-    fontSize: 16,
-    marginBottom: 2,
-  },
-  email: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-  },
-  section: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-  },
-  sectionTitle: {
-    color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '600',
+    gap: 8,
     marginBottom: 16,
   },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  statCard: {
-    width: '48%',
-    backgroundColor: Colors.cardBackground,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.borderColor,
-  },
-  statValue: {
+  backText: {
     color: Colors.accent,
+    fontSize: 16,
+  },
+  headerTitle: {
     fontSize: 24,
     fontWeight: '700',
-  },
-  statTitle: {
     color: Colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 4,
   },
-  statSubtitle: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  actionButton: {
-    width: '48%',
-    backgroundColor: Colors.cardBackground,
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 12,
+  profileHeader: {
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.borderColor,
+    paddingVertical: 32,
   },
-  actionIcon: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  actionText: {
-    color: Colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  activityList: {
-    gap: 12,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.cardBackground,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderColor,
-  },
-  activityIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.accent + '20',
+  profileAvatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginBottom: 16,
   },
-  activityInfo: {
+  avatarText: {
+    color: Colors.primary,
+    fontSize: 36,
+    fontWeight: '700',
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  profileStatus: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  form: {
     flex: 1,
   },
-  activityTitle: {
-    color: Colors.textPrimary,
+  formGroup: {
+    marginBottom: 20,
+  },
+  formLabel: {
     fontSize: 14,
     fontWeight: '500',
+    color: Colors.accent,
+    marginBottom: 8,
   },
-  activityTime: {
-    color: Colors.textSecondary,
+  formInput: {
+    backgroundColor: Colors.inputBackground,
+    borderWidth: 1,
+    borderColor: Colors.inputBorder,
+    borderRadius: 8,
+    padding: 12,
+    color: Colors.textPrimary,
+    fontSize: 16,
+  },
+  savingsSummary: {
+    backgroundColor: Colors.savingsBackground,
+    borderColor: Colors.savingsBorder,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  savingsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 8,
+  },
+  savingsAmount: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: Colors.accent,
+    marginBottom: 8,
+  },
+  savingsDetails: {
     fontSize: 12,
-    marginTop: 2,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  actionButtons: {
+    gap: 12,
+    paddingBottom: 32,
+  },
+  primaryButton: {
+    borderRadius: 8,
+  },
+  primaryButtonGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: Colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: Colors.cardBackground,
+    borderWidth: 1,
+    borderColor: Colors.borderColor,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: Colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

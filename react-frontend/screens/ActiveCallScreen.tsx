@@ -5,13 +5,12 @@ import {
   StyleSheet, 
   TouchableOpacity, 
   SafeAreaView,
-  Alert 
+  StatusBar
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../constants/Colors';
-import { Avatar } from '../components/Avatar';
+import { PhoneOffIcon } from '../components/Icons';
 import { Call } from '../types';
-import { ApiService } from '../services/api';
-import { socketService } from '../services/socket';
 
 interface ActiveCallScreenProps {
   call: Call;
@@ -20,223 +19,198 @@ interface ActiveCallScreenProps {
 
 export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({ call, onCallEnd }) => {
   const [duration, setDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
-  const [callStatus, setCallStatus] = useState(call.status);
+  const [callStatus, setCallStatus] = useState('Connecting...');
 
   useEffect(() => {
-    // Timer for call duration
     const timer = setInterval(() => {
       setDuration(prev => prev + 1);
     }, 1000);
 
-    // Listen for call status updates
-    const handleCallStatusUpdate = (data: any) => {
-      if (data.callSid === call.callSid) {
-        setCallStatus(data.status);
-        if (data.status === 'completed' || data.status === 'failed') {
-          onCallEnd();
-        }
-      }
-    };
+    // Simulate call stages
+    setTimeout(() => setCallStatus('Ringing...'), 1000);
+    setTimeout(() => setCallStatus('Connected'), 3000);
 
-    const handleCallEnded = (data: any) => {
-      if (data.callSid === call.callSid) {
-        onCallEnd();
-      }
-    };
+    return () => clearInterval(timer);
+  }, []);
 
-    socketService.on('callStatusUpdate', handleCallStatusUpdate);
-    socketService.on('callEnded', handleCallEnded);
-
-    return () => {
-      clearInterval(timer);
-      socketService.off('callStatusUpdate', handleCallStatusUpdate);
-      socketService.off('callEnded', handleCallEnded);
-    };
-  }, [call.callSid, onCallEnd]);
-
-  const formatDuration = (seconds: number): string => {
+  const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleHangup = async () => {
-    try {
-      await ApiService.hangupCall(call.callSid);
-      onCallEnd();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to end call');
-      console.error('Hangup error:', error);
-    }
-  };
-
-  const handleMute = () => {
-    setIsMuted(!isMuted);
-    // TODO: Implement actual mute functionality
-  };
-
-  const handleSpeaker = () => {
-    setIsSpeakerOn(!isSpeakerOn);
-    // TODO: Implement actual speaker functionality
-  };
-
-  const getContactName = () => {
-    // In a real app, you would look up the contact name from the phone number
-    return call.to || call.from || 'Unknown';
-  };
-
-  const getStatusText = () => {
-    switch (callStatus) {
-      case 'ringing':
-        return 'Ringing...';
-      case 'in-progress':
-        return formatDuration(duration);
-      case 'connecting':
-        return 'Connecting...';
-      default:
-        return 'Call in progress';
-    }
+  const getContactInitials = (name: string) => {
+    return name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'UK';
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.statusText}>{getStatusText()}</Text>
-      </View>
-
-      {/* Contact Info */}
-      <View style={styles.contactSection}>
-        <Avatar name={getContactName()} size={120} />
-        <Text style={styles.contactName}>{getContactName()}</Text>
-        <Text style={styles.contactNumber}>{call.to || call.from}</Text>
-      </View>
-
-      {/* Call Controls */}
-      <View style={styles.controlsSection}>
-        {/* Secondary Controls */}
-        <View style={styles.secondaryControls}>
-          <TouchableOpacity 
-            style={[styles.controlButton, isMuted && styles.controlButtonActive]}
-            onPress={handleMute}
-          >
-            <Text style={styles.controlIcon}>{isMuted ? '🔇' : '🔊'}</Text>
-            <Text style={styles.controlLabel}>Mute</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.controlButton}>
-            <Text style={styles.controlIcon}>⌨️</Text>
-            <Text style={styles.controlLabel}>Keypad</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.controlButton, isSpeakerOn && styles.controlButtonActive]}
-            onPress={handleSpeaker}
-          >
-            <Text style={styles.controlIcon}>📢</Text>
-            <Text style={styles.controlLabel}>Speaker</Text>
-          </TouchableOpacity>
+    <LinearGradient
+      colors={Colors.backgroundGradient}
+      style={styles.container}
+    >
+      <StatusBar barStyle="light-content" backgroundColor={Colors.primary} />
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.callInfo}>
+          <Text style={styles.callStatus}>{callStatus}</Text>
+          <Text style={styles.callSubStatus}>AI Route: Carrier A • HD Quality</Text>
+          
+          <View style={styles.callerAvatar}>
+            <LinearGradient
+              colors={Colors.aiGradient}
+              style={styles.avatar}
+            >
+              <Text style={styles.avatarText}>
+                {getContactInitials(call.contact_name || 'Unknown')}
+              </Text>
+            </LinearGradient>
+          </View>
+          
+          <Text style={styles.callerName}>{call.contact_name || 'Unknown Caller'}</Text>
+          <Text style={styles.callerNumber}>{call.phone_number}</Text>
+          
+          {callStatus === 'Connected' && (
+            <>
+              <Text style={styles.callDuration}>{formatDuration(duration)}</Text>
+              <Text style={styles.savings}>Saving $0.18/min • Total saved: $0.46</Text>
+            </>
+          )}
         </View>
 
-        {/* Primary Controls */}
-        <View style={styles.primaryControls}>
-          <TouchableOpacity style={styles.controlButton}>
-            <Text style={styles.controlIcon}>➕</Text>
-            <Text style={styles.controlLabel}>Add Call</Text>
-          </TouchableOpacity>
-
+        {/* Call Controls */}
+        <View style={styles.callControls}>
+          <View style={styles.controlsGrid}>
+            <TouchableOpacity style={[styles.controlButton, styles.muteButton]}>
+              <Text style={styles.controlIcon}>🔇</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.controlButton, styles.holdButton]}>
+              <Text style={styles.controlIcon}>⏸</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.controlButton, styles.speakerButton]}>
+              <Text style={styles.controlIcon}>📢</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.controlButton, styles.keypadButton]}>
+              <Text style={styles.controlIcon}>🔢</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.controlButton, styles.addButton]}>
+              <Text style={styles.controlIcon}>➕</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.controlButton, styles.recordButton]}>
+              <Text style={styles.controlIcon}>⏺</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {/* End Call Button */}
           <TouchableOpacity 
-            style={styles.hangupButton}
-            onPress={handleHangup}
+            style={styles.endCallButton}
+            onPress={onCallEnd}
           >
-            <Text style={styles.hangupIcon}>📞</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.controlButton}>
-            <Text style={styles.controlIcon}>👥</Text>
-            <Text style={styles.controlLabel}>Contacts</Text>
+            <PhoneOffIcon size={32} color={Colors.textPrimary} />
           </TouchableOpacity>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.primary,
   },
-  header: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  statusText: {
-    color: Colors.textSecondary,
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  contactSection: {
+  safeArea: {
     flex: 1,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 40,
+  },
+  callInfo: {
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
   },
-  contactName: {
-    color: Colors.textPrimary,
-    fontSize: 28,
-    fontWeight: '600',
-    marginTop: 24,
-    textAlign: 'center',
-  },
-  contactNumber: {
-    color: Colors.textSecondary,
-    fontSize: 18,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  controlsSection: {
-    paddingHorizontal: 40,
-    paddingBottom: 40,
-  },
-  secondaryControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 40,
-  },
-  primaryControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  controlButton: {
-    alignItems: 'center',
-    padding: 10,
-  },
-  controlButtonActive: {
-    backgroundColor: Colors.accent + '20',
-    borderRadius: 20,
-  },
-  controlIcon: {
-    fontSize: 24,
+  callStatus: {
+    fontSize: 16,
+    color: Colors.accent,
     marginBottom: 8,
   },
-  controlLabel: {
+  callSubStatus: {
+    fontSize: 14,
     color: Colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '500',
+    marginBottom: 40,
   },
-  hangupButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: Colors.danger,
+  callerAvatar: {
+    marginBottom: 24,
+  },
+  avatar: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  hangupIcon: {
-    fontSize: 30,
-    transform: [{ rotate: '225deg' }],
+  avatarText: {
+    color: Colors.primary,
+    fontSize: 48,
+    fontWeight: '700',
+  },
+  callerName: {
+    fontSize: 28,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  callerNumber: {
+    fontSize: 18,
+    color: Colors.textSecondary,
+    marginBottom: 20,
+  },
+  callDuration: {
+    fontSize: 24,
+    color: Colors.accent,
+    fontWeight: '300',
+    marginBottom: 8,
+  },
+  savings: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  callControls: {
+    alignItems: 'center',
+  },
+  controlsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 20,
+    marginBottom: 40,
+    maxWidth: 240,
+  },
+  controlButton: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.cardBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderColor,
+  },
+  muteButton: {},
+  holdButton: {},
+  speakerButton: {},
+  keypadButton: {},
+  addButton: {},
+  recordButton: {},
+  controlIcon: {
+    fontSize: 24,
+  },
+  endCallButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.error,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
