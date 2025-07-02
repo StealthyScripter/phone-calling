@@ -25,9 +25,10 @@ const { width: screenWidth } = Dimensions.get('window');
 
 interface TabNavigatorProps {
   onMakeCall: (phoneNumber: string, contactName?: string) => void;
+  navigation: any;
 }
 
-const TabNavigator: React.FC<TabNavigatorProps> = ({ onMakeCall }) => (
+const TabNavigator: React.FC<TabNavigatorProps> = ({ onMakeCall, navigation }) => (
   <Tab.Navigator
     tabBar={(props) => <ModernTabBar {...props} />}
     screenOptions={{
@@ -70,11 +71,12 @@ const TabNavigator: React.FC<TabNavigatorProps> = ({ onMakeCall }) => (
 export default function App() {
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [incomingCall, setIncomingCall] = useState<Call | null>(null);
+  const [navigationRef, setNavigationRef] = useState<any>(null);
 
   // Global handler functions - accessible throughout the component
   const handleIncomingCall = (data: any) => {
     console.log('Incoming call received:', data);
-    setIncomingCall({
+    const newIncomingCall: Call = {
       id: data.id || Date.now(),
       call_sid: data.call_sid || '',
       user_id: data.user_id || 1,
@@ -88,12 +90,19 @@ export default function App() {
       start_time: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    });
+    };
+    
+    setIncomingCall(newIncomingCall);
+    
+    // Navigate to incoming call screen immediately
+    if (navigationRef) {
+      navigationRef.navigate('IncomingCall', { call: newIncomingCall });
+    }
   };
 
   const handleCallInitiated = (data: any) => {
     console.log('Call initiated:', data);
-    setActiveCall({
+    const newActiveCall: Call = {
       id: data.id || Date.now(),
       call_sid: data.call_sid || '',
       user_id: data.user_id || 1,
@@ -107,7 +116,14 @@ export default function App() {
       start_time: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-    });
+    };
+    
+    setActiveCall(newActiveCall);
+    
+    // Navigate to active call screen immediately
+    if (navigationRef) {
+      navigationRef.navigate('ActiveCall', { call: newActiveCall });
+    }
   };
 
   const handleCallStatusUpdate = (data: any) => {
@@ -121,25 +137,44 @@ export default function App() {
     console.log('Call ended:', data);
     setActiveCall(null);
     setIncomingCall(null);
+    
+    // Navigate back to main screens
+    if (navigationRef) {
+      navigationRef.navigate('Main');
+    }
   };
 
   const handleCallEnd = () => {
     setActiveCall(null);
+    // Navigate back to main screens
+    if (navigationRef) {
+      navigationRef.navigate('Main');
+    }
   };
 
   const handleIncomingCallAccept = () => {
     if (incomingCall) {
-      setActiveCall({
+      const acceptedCall: Call = {
         ...incomingCall,
         status: 'in-progress',
         start_time: new Date().toISOString(),
-      });
+      };
+      setActiveCall(acceptedCall);
       setIncomingCall(null);
+      
+      // Navigate to active call screen
+      if (navigationRef) {
+        navigationRef.navigate('ActiveCall', { call: acceptedCall });
+      }
     }
   };
 
   const handleIncomingCallReject = () => {
     setIncomingCall(null);
+    // Navigate back to main screens
+    if (navigationRef) {
+      navigationRef.navigate('Main');
+    }
   };
 
   const handleOutgoingCall = (phoneNumber: string, contactName?: string) => {
@@ -158,7 +193,13 @@ export default function App() {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+    
     setActiveCall(newCall);
+    
+    // Navigate to active call screen immediately
+    if (navigationRef) {
+      navigationRef.navigate('ActiveCall', { call: newCall });
+    }
   };
 
   // For testing incoming calls - you can remove this in production
@@ -190,7 +231,7 @@ export default function App() {
       socketService.off('callEnded', handleCallEnded);
       socketService.disconnect();
     };
-  }, [activeCall]);
+  }, [activeCall, navigationRef]);
 
   const navigationTheme = {
     ...NavigationDarkTheme,
@@ -213,7 +254,10 @@ export default function App() {
     <View style={styles.appContainer}>
       <StatusBar style="light" backgroundColor={Colors.primary} />
       <View style={styles.phoneContainer}>
-        <NavigationContainer theme={navigationTheme}>
+        <NavigationContainer 
+          theme={navigationTheme}
+          ref={setNavigationRef}
+        >
           <Stack.Navigator
             screenOptions={{
               headerShown: false,
@@ -223,8 +267,15 @@ export default function App() {
             }}
           >
             <Stack.Screen name="Main">
-              {(props) => <TabNavigator {...props} onMakeCall={handleOutgoingCall} />}
+              {(props) => (
+                <TabNavigator 
+                  {...props} 
+                  onMakeCall={handleOutgoingCall} 
+                  navigation={props.navigation}
+                />
+              )}
             </Stack.Screen>
+            
             <Stack.Screen 
               name="Profile"
               component={ProfileScreen}
@@ -233,51 +284,51 @@ export default function App() {
                 gestureDirection: 'vertical',
               }}
             />
-            {/* Incoming Call Screen - Highest Priority */}
-            {incomingCall && (
-              <Stack.Screen 
-                name="IncomingCall"
-                options={{
-                  presentation: 'modal',
-                  gestureEnabled: false,
-                  cardStyleInterpolator: ({ current }) => ({
-                    cardStyle: {
-                      opacity: current.progress,
-                    },
-                  }),
-                }}
-              >
-                {() => (
-                  <IncomingCallScreen 
-                    call={incomingCall} 
-                    onAccept={handleIncomingCallAccept}
-                    onReject={handleIncomingCallReject}
-                  />
-                )}
-              </Stack.Screen>
-            )}
+            
             {/* Active Call Screen */}
-            {activeCall && !incomingCall && (
-              <Stack.Screen 
-                name="ActiveCall"
-                options={{
-                  presentation: 'modal',
-                  gestureEnabled: false,
-                  cardStyleInterpolator: ({ current }) => ({
-                    cardStyle: {
-                      opacity: current.progress,
-                    },
-                  }),
-                }}
-              >
-                {() => (
-                  <ActiveCallScreen 
-                    call={activeCall} 
-                    onCallEnd={handleCallEnd}
-                  />
-                )}
-              </Stack.Screen>
-            )}
+            <Stack.Screen 
+              name="ActiveCall"
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                cardStyleInterpolator: ({ current }) => ({
+                  cardStyle: {
+                    opacity: current.progress,
+                  },
+                }),
+              }}
+            >
+              {({ route }: { route: any }) => (
+                <ActiveCallScreen 
+                  call={route.params?.call || activeCall!} 
+                  onCallEnd={handleCallEnd}
+                  route={route}
+                />
+              )}
+            </Stack.Screen>
+            
+            {/* Incoming Call Screen */}
+            <Stack.Screen 
+              name="IncomingCall"
+              options={{
+                presentation: 'modal',
+                gestureEnabled: false,
+                cardStyleInterpolator: ({ current }) => ({
+                  cardStyle: {
+                    opacity: current.progress,
+                  },
+                }),
+              }}
+            >
+              {({ route }: { route: any }) => (
+                <IncomingCallScreen 
+                  call={route.params?.call || incomingCall!} 
+                  onAccept={handleIncomingCallAccept}
+                  onReject={handleIncomingCallReject}
+                  route={route}
+                />
+              )}
+            </Stack.Screen>
           </Stack.Navigator>
         </NavigationContainer>
       </View>

@@ -14,16 +14,21 @@ import { PhoneIcon, PhoneOffIcon } from '../components/Icons';
 import { Call } from '../types';
 
 interface IncomingCallScreenProps {
-  call: Call;
+  call?: Call;
   onAccept: () => void;
   onReject: () => void;
+  route?: any; // Using any to avoid complex typing
 }
 
 export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({ 
-  call, 
+  call: propCall,
   onAccept, 
-  onReject 
+  onReject,
+  route
 }) => {
+  // Use call from route params if available, otherwise fallback to prop
+  const call = route?.params?.call || propCall;
+  
   const [pulseAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
@@ -53,6 +58,25 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   const getContactInitials = (name: string) => {
     return name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'UK';
   };
+
+  // If no call data, show error state
+  if (!call) {
+    return (
+      <LinearGradient
+        colors={Colors.backgroundGradient}
+        style={styles.container}
+      >
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.errorState}>
+            <Text style={styles.errorText}>Call data not available</Text>
+            <TouchableOpacity onPress={onReject} style={styles.errorButton}>
+              <Text style={styles.errorButtonText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient
@@ -228,5 +252,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     textAlign: 'center',
+  },
+  errorState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 20,
+  },
+  errorText: {
+    color: Colors.textPrimary,
+    fontSize: 18,
+    textAlign: 'center',
+  },
+  errorButton: {
+    backgroundColor: Colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: Colors.primary,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
