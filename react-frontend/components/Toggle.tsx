@@ -27,7 +27,7 @@ export const Toggle: React.FC<ToggleProps> = ({ value, onValueChange, disabled =
 
   const backgroundColor = animatedValue.interpolate({
     inputRange: [0, 1],
-    outputRange: [Colors.secondary, Colors.accent],
+    outputRange: [Colors.accentSecondary, Colors.accent],
   });
 
   const translateX = animatedValue.interpolate({
