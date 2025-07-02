@@ -19,9 +19,10 @@ import { ApiService } from '../services/api';
 
 interface ContactsScreenProps {
   navigation: any;
+  onMakeCall: (phoneNumber: string, contactName?: string) => void;
 }
 
-export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation }) => {
+export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMakeCall }) => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -47,12 +48,15 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation }) =>
     }
   };
 
-  const handleCall = async (phone: string) => {
+  const handleCall = async (phone: string, contactName: string) => {
     try {
+      // Call the API service to initiate the call on the backend
       await ApiService.makeCall(phone);
-      Alert.alert('Call Initiated', `Calling ${phone}...`);
+      // Also trigger the app-level call handling for UI state management
+      onMakeCall(phone, contactName);
     } catch (error) {
       Alert.alert('Error', 'Failed to make call');
+      console.error('Call error:', error);
     }
   };
 
@@ -134,7 +138,7 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation }) =>
         
         <TouchableOpacity 
           style={styles.callButton}
-          onPress={() => handleCall(item.phone)}
+          onPress={() => handleCall(item.phone, item.name)}
         >
           <LinearGradient
             colors={Colors.aiGradient}

@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   secondary: {
-    backgroundColor: Colors.secondary,
+    backgroundColor: Colors.accentSecondary,
   },
   disabled: {
     opacity: 0.5,
