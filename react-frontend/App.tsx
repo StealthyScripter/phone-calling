@@ -16,6 +16,17 @@ import { ModernTabBar } from './components/BottomNavigation';
 import { socketService } from './services/socket';
 import { Call } from './types';
 import { DarkTheme as NavigationDarkTheme } from '@react-navigation/native';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -74,7 +85,7 @@ export default function App() {
   const [navigationRef, setNavigationRef] = useState<any>(null);
 
   // Global handler functions - accessible throughout the component
-  const handleIncomingCall = (data: any) => {
+  const handleIncomingCall = async(data: any) => {
     console.log('Incoming call received:', data);
     const newIncomingCall: Call = {
       id: data.id || Date.now(),
@@ -98,6 +109,16 @@ export default function App() {
     if (navigationRef) {
       navigationRef.navigate('IncomingCall', { call: newIncomingCall });
     }
+
+    await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Incoming Call",
+      body: `Call from ${data.contact_name || data.from_number}`,
+      sound: 'default',
+    },
+    trigger: null,
+  });
+
   };
 
   const handleCallInitiated = (data: any) => {
@@ -145,6 +166,7 @@ export default function App() {
   };
 
   const handleCallEnd = () => {
+
     setActiveCall(null);
     // Navigate back to main screens
     if (navigationRef) {
@@ -202,6 +224,26 @@ export default function App() {
     }
   };
 
+  const handleCallAccepted = (data: any) => {
+      console.log('Call accepted:', data);
+      if (incomingCall && incomingCall.call_sid === data.callSid) {
+        const acceptedCall: Call = {
+          ...incomingCall,
+          status: 'in-progress',
+          start_time: new Date().toISOString(),
+        };
+        setActiveCall(acceptedCall);
+        setIncomingCall(null);
+        navigationRef?.navigate('ActiveCall', { call: acceptedCall });
+      }
+    };
+
+  const handleCallRejected = (data: any) => {
+    console.log('Call rejected:', data);
+    setIncomingCall(null);
+    navigationRef?.navigate('Main');
+  };
+
   // For testing incoming calls - you can remove this in production
   const simulateIncomingCall = () => {
     setTimeout(() => {
@@ -223,15 +265,20 @@ export default function App() {
     socketService.on('callInitiated', handleCallInitiated);
     socketService.on('callStatusUpdate', handleCallStatusUpdate);
     socketService.on('callEnded', handleCallEnded);
+    socketService.on('callAccepted', handleCallAccepted);
+    socketService.on('callRejected', handleCallRejected);
+  
 
     return () => {
       socketService.off('incomingCall', handleIncomingCall);
       socketService.off('callInitiated', handleCallInitiated);
       socketService.off('callStatusUpdate', handleCallStatusUpdate);
       socketService.off('callEnded', handleCallEnded);
+      socketService.off('callAccepted', handleCallAccepted);
+    socketService.off('callRejected', handleCallRejected);
       socketService.disconnect();
     };
-  }, [activeCall, navigationRef]);
+  }, [incomingCall, activeCall]);
 
   const navigationTheme = {
     ...NavigationDarkTheme,

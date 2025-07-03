@@ -72,6 +72,8 @@ export interface SocketEvents {
   callInitiated: (data: Call) => void;
   callStatusUpdate: (data: { callSid: string; status: string; duration?: number }) => void;
   callEnded: (data: { callSid: string; duration?: number }) => void;
+  callAccepted: (data: { callSid: string; duration?: number }) => void; 
+  callRejected: (data: { callSid: string; duration?: number }) => void; 
   error: (data: { message: string }) => void;
 }
 

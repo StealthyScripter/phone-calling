@@ -102,6 +102,30 @@ class ApiServiceClass {
     return response.calls || [];
   }
 
+async getUserStats(userId: number): Promise<any> {
+  return this.request(`/users/${userId}/call-stats`);
+}
+
+async getContactCallHistory(contactId: number): Promise<any> {
+  return this.request(`/contacts/${contactId}/call-history`);
+}
+
+async acceptCall(callSid: string, userId?: number): Promise<CallApiResponse> {
+  const requestBody = userId ? { user_id: userId } : {};
+  return this.request<CallApiResponse>(`/calls/accept/${callSid}`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
+async rejectCall(callSid: string, userId?: number): Promise<CallApiResponse> {
+  const requestBody = userId ? { user_id: userId } : {};
+  return this.request<CallApiResponse>(`/calls/reject/${callSid}`, {
+    method: 'POST',
+    body: JSON.stringify(requestBody),
+  });
+}
+
   // Health check
   async healthCheck(): Promise<any> {
     return this.request('/health');

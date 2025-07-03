@@ -52,6 +52,17 @@ class SocketService {
       console.log('Call ended:', data);
       this.emit('callEnded', data);
     });
+
+    this.socket.on('callAccepted', (data) => {
+      console.log('Call accepted:', data);
+      this.emit('callAccepted', data);
+    });
+
+    this.socket.on('callRejected', (data) => {
+      console.log('Call rejected:', data);
+      this.emit('callRejected', data);
+    });
+    
   }
 
   disconnect(): void {

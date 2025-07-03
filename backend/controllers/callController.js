@@ -90,15 +90,17 @@ const makeCall = async (req, res) => {
             global.io.emit('callInitiated', {
                 callSid: call.sid,
                 to: to,
+                from: process.env.TWILIO_PHONE_NUMBER,
                 contact: contact ? contact.toJSON() : null,
-                user_id: user_id
+                user_id: user_id,
+                status: 'initiated'
             });
         }
 
         res.json({
             success: true,
             callSid: call.sid,
-            status: 'calling',
+            status: 'initiated',
             to: to,
             contact: contact ? contact.toJSON() : null,
             message: 'Call initiated successfully'

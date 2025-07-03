@@ -29,6 +29,30 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [duration, setDuration] = useState(0);
   const [callStatus, setCallStatus] = useState('Calling...');
   const [isConnected, setIsConnected] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
+  const [isOnHold, setIsOnHold] = useState(false);
+
+
+  const handleMute = async () => {
+  try {
+    // Add API call for mute/unmute when backend supports it
+    setIsMuted(!isMuted);
+    console.log(`Call ${isMuted ? 'unmuted' : 'muted'}`);
+    } catch (error) {
+      console.error('Mute error:', error);
+    }
+  };
+
+  const handleSpeaker = () => {
+    setIsSpeakerOn(!isSpeakerOn);
+    console.log(`Speaker ${isSpeakerOn ? 'off' : 'on'}`);
+  };
+
+  const handleHold = () => {
+    setIsOnHold(!isOnHold);
+    console.log(`Call ${isOnHold ? 'resumed' : 'on hold'}`);
+  };
 
   useEffect(() => {
     if (!call) return;
@@ -178,8 +202,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
         {/* Call Controls */}
         <View style={styles.callControls}>
           <View style={styles.controlsGrid}>
-            <TouchableOpacity style={[styles.controlButton, styles.muteButton]}>
-              <Text style={styles.controlIcon}>🔇</Text>
+            <TouchableOpacity 
+              style={[styles.controlButton, isMuted && styles.controlButtonActive]}
+              onPress={handleMute}>
+              <Text style={styles.controlIcon}>{isMuted ? '🔇' : '🔊'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.controlButton, styles.holdButton]}>
               <Text style={styles.controlIcon}>⏸</Text>
@@ -307,6 +333,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.borderColor,
+  },
+  controlButtonActive: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
   },
   muteButton: {},
   holdButton: {},

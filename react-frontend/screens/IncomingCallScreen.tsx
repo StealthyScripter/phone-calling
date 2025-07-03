@@ -6,12 +6,14 @@ import {
   TouchableOpacity, 
   SafeAreaView,
   StatusBar,
-  Animated
+  Animated,
+  Alert
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../constants/Colors';
 import { PhoneIcon, PhoneOffIcon } from '../components/Icons';
 import { Call } from '../types';
+import { ApiService } from '../services/api';
 
 interface IncomingCallScreenProps {
   call?: Call;
@@ -30,6 +32,30 @@ export const IncomingCallScreen: React.FC<IncomingCallScreenProps> = ({
   const call = route?.params?.call || propCall;
   
   const [pulseAnim] = useState(new Animated.Value(1));
+
+  const handleAccept = async () => {
+  if (call?.call_sid) {
+    try {
+      await ApiService.acceptCall(call.call_sid);
+      onAccept();
+    } catch (error) {
+      console.error('Accept call error:', error);
+      Alert.alert('Error', 'Failed to accept call');
+    }
+  }
+};
+
+const handleReject = async () => {
+  if (call?.call_sid) {
+    try {
+      await ApiService.rejectCall(call.call_sid);
+      onReject();
+    } catch (error) {
+      console.error('Reject call error:', error);
+      Alert.alert('Error', 'Failed to reject call');
+    }
+  }
+};
 
   useEffect(() => {
     // Create pulsing animation for incoming call
