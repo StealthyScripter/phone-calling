@@ -126,6 +126,13 @@ async rejectCall(callSid: string, userId?: number): Promise<CallApiResponse> {
   });
 }
 
+async updateCallStatus(callSid: string, status: string): Promise<CallApiResponse> {
+  return this.request<CallApiResponse>(`/calls/status/${callSid}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  });
+}
+
   // Health check
   async healthCheck(): Promise<any> {
     return this.request('/health');

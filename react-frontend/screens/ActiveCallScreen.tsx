@@ -10,12 +10,13 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../constants/Colors';
 import { PhoneOffIcon } from '../components/Icons';
+import { socketService } from '../services/socket';
 import { Call } from '../types';
 
 interface ActiveCallScreenProps {
   call?: Call;
-  onCallEnd: () => void;
-  route?: any; // Using any to avoid complex typing
+  onCallEnd: () => Promise<void>;
+  route?: any;
 }
 
 export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({ 
@@ -98,19 +99,24 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     }
   }, [call?.direction]);
 
-  // Update call status based on call.status if it changes
   useEffect(() => {
-    if (!call) return;
+  if (call?.call_sid) {
+    const handleStatusUpdate = (data: any) => {
+      if (data.call_sid === call.call_sid) {
+        setCallStatus(data.status);
+        if (data.status === 'connected') {
+          setIsConnected(true);
+        }
+      }
+    };
     
-    if (call.status === 'in-progress' || call.status === 'completed') {
-      setCallStatus('Connected');
-      setIsConnected(true);
-    } else if (call.status === 'ringing') {
-      setCallStatus('Ringing...');
-    } else if (call.status === 'initiated') {
-      setCallStatus('Calling...');
-    }
-  }, [call?.status]);
+    socketService.on('callStatusUpdate', handleStatusUpdate);
+    
+    return () => {
+      socketService.off('callStatusUpdate', handleStatusUpdate);
+    };
+  }
+}, [call?.call_sid]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

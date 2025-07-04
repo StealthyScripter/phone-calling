@@ -17,6 +17,7 @@ import { socketService } from './services/socket';
 import { Call } from './types';
 import { DarkTheme as NavigationDarkTheme } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
+import { ApiService } from './services/api';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -83,6 +84,7 @@ export default function App() {
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [incomingCall, setIncomingCall] = useState<Call | null>(null);
   const [navigationRef, setNavigationRef] = useState<any>(null);
+  const [isEndingCall, setIsEndingCall] = useState(false);
 
   // Global handler functions - accessible throughout the component
   const handleIncomingCall = async(data: any) => {
@@ -156,6 +158,7 @@ export default function App() {
 
   const handleCallEnded = (data: any) => {
     console.log('Call ended:', data);
+
     setActiveCall(null);
     setIncomingCall(null);
     
@@ -165,11 +168,26 @@ export default function App() {
     }
   };
 
-  const handleCallEnd = () => {
+  const handleCallEnd = async() => {
+    console.log('Set is ending call to true');
+    setIsEndingCall(true);
+    
+    try {
+      if (activeCall?.call_sid){
+        //Calculate duration
+        const duration = Date.now() - new Date(activeCall.start_time).getTime();
+        // Notify backend
+        await ApiService.hangupCall(activeCall.call_sid);
+        console.log('Call end signal sent');
 
-    setActiveCall(null);
-    // Navigate back to main screens
-    if (navigationRef) {
+        setActiveCall(null);
+        
+        navigationRef.navigate('Main');
+      }
+    } catch (error) {
+      console.error('End call error:', error);
+
+      setActiveCall(null);
       navigationRef.navigate('Main');
     }
   };
