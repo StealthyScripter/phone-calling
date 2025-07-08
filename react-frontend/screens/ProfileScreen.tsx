@@ -12,17 +12,27 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../constants/Colors';
 import { BackIcon, BatteryIcon } from '../components/Icons';
+import { useAuth } from '../contexts/AuthContext';
+
 
 interface ProfileScreenProps {
   navigation: any;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
-  const [name, setName] = useState('John Doe');
-  const [email, setEmail] = useState('john.doe@example.com');
-  const [phone, setPhone] = useState('+1 (555) 123-4567');
+  const { user, logout, updateProfile } = useAuth();
+  const [firstName, setFirstName] = useState(user?.firstName || '');
+  const [lastName, setLastName] = useState(user?.lastName || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
 
-  const handleUpdateProfile = () => {
+  const handleUpdateProfile = async() => {
+    try {
+      await updateProfile({ firstName, lastName });
+      Alert.alert('Success', 'Profile updated successfully');
+    } catch (error: any) {
+    }
     Alert.alert('Success', 'Profile updated successfully');
   };
 
@@ -32,7 +42,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
       'Are you sure you want to sign out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign Out', style: 'destructive', onPress: () => navigation.goBack() }
+        { text: 'Sign Out', style: 'destructive', onPress: logout }
       ]
     );
   };

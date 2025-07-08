@@ -112,13 +112,11 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
             </View>
           </View>
 
-          {/* Cost Savings Section */}
           <View style={styles.costSavings}>
             <Text style={styles.savingsTitle}>Save up to 70% on calls to Africa</Text>
             <Text style={styles.savingsSubtitle}>AI optimizes routing for best rates</Text>
           </View>
 
-          {/* Number Display */}
           <View style={styles.numberDisplayContainer}>
             <View style={styles.numberDisplay}>
               <Text style={styles.numberText} numberOfLines={1} adjustsFontSizeToFit>
@@ -132,20 +130,17 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
             >
               <Text style={[styles.backspaceText, !number && styles.disabled]}>⌫</Text>
             </TouchableOpacity>
-          </View>
+          </View> 
 
-          {/* Keypad */}
           <View style={styles.keypadContainer}>
             <View style={styles.keypad}>
-              {/* Rows 1-3: digits 1-9 */}
               {[0, 1, 2].map(rowIndex => (
                 <View key={rowIndex} style={styles.keypadRow}>
-                  {keypadData.slice(rowIndex * 3, (rowIndex + 1) * 3).map(([digit, letters]) =>
+                  {keypadData.slice(rowIndex * 3, (rowIndex + 1) * 3).map(([digit, letters]) => (
                     renderKeypadButton(digit, letters)
-                  )}
+                  ))}
                 </View>
               ))}
-              {/* Row 4: * 0 # */}
               <View style={styles.keypadRow}>
                 {renderKeypadButton('*', '')}
                 {renderKeypadButton('0', '+')}

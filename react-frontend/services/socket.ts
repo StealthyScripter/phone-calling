@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import { SocketEvents } from '../types';
 
-const SOCKET_URL = 'http://localhost:3000';
+const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+// 'https://your-production-api.com' ||
 
 class SocketService {
   private socket: Socket | null = null;

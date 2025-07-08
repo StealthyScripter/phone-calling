@@ -106,6 +106,6 @@ router.post('/change-password', authenticateToken, changePassword);
  * Note: Since we're using stateless JWT tokens, logout is handled
  * client-side by removing the token from storage. For added security,
  * you could implement a token blacklist using Redis.
- */
+ */e
 
 module.exports = router;

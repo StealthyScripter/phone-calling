@@ -21,13 +21,13 @@ export interface Contact {
 export interface Call {
   id: number;
   call_sid: string;
-  user_id: number;
+  user_id: number | string;
   direction: 'incoming' | 'outgoing';
   from_number: string;
   to_number: string;
   contact_name?: string;
   phone_number: string;
-  status: 'initiated' | 'ringing' | 'in-progress' | 'completed' | 'failed' | 'busy' | 'no-answer' | 'canceled' | 'missed';
+  status: 'initiated' | 'ringing' | 'in-progress' | 'completed' | 'failed' | 'busy' | 'no-answer' | 'canceled' | 'missed' | 'initiating';
   duration?: number;
   start_time: string;
   end_time?: string;

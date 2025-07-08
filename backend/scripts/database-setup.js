@@ -14,9 +14,6 @@ async function setupDatabase() {
         console.log('✅ Database setup completed successfully!');
         console.log('');
         
-        // Create a sample user and contact for testing
-        await createSampleData();
-        
         // Display stats
         const stats = await database.getStats();
         console.log('📊 Database Statistics:');
@@ -39,70 +36,6 @@ async function setupDatabase() {
         process.exit(1);
     } finally {
         await database.close();
-    }
-}
-
-async function createSampleData() {
-    try {
-        console.log('📝 Creating sample data...');
-        
-        // Check if sample user already exists
-        const existingUser = await User.findByEmail('demo@example.com');
-        if (existingUser) {
-            console.log('⏭️  Sample data already exists, skipping...');
-            return;
-        }
-        
-        // Create sample user
-        const sampleUser = await User.create({
-            name: 'Demo User',
-            email: 'demo@example.com',
-            phone: '+1234567890',
-            preferences: {
-                theme: 'light',
-                notifications: true
-            }
-        });
-        
-        console.log(`✅ Created sample user: ${sampleUser.name} (ID: ${sampleUser.id})`);
-        
-        // Create sample contacts
-        const sampleContacts = [
-            {
-                user_id: sampleUser.id,
-                name: 'John Doe',
-                phone: '+1987654321',
-                email: 'john.doe@example.com',
-                is_favorite: true,
-                notes: 'Work colleague'
-            },
-            {
-                user_id: sampleUser.id,
-                name: 'Jane Smith',
-                phone: '+1555123456',
-                email: 'jane.smith@example.com',
-                is_favorite: false,
-                notes: 'Family friend'
-            },
-            {
-                user_id: sampleUser.id,
-                name: 'Emergency Services',
-                phone: '+1911',
-                is_favorite: true,
-                notes: 'Emergency contact'
-            }
-        ];
-        
-        for (const contactData of sampleContacts) {
-            const contact = await Contact.create(contactData);
-            console.log(`✅ Created sample contact: ${contact.name} (${contact.phone})`);
-        }
-        
-        console.log('✅ Sample data created successfully!');
-        
-    } catch (error) {
-        console.error('❌ Failed to create sample data:', error.message);
-        // Don't exit here, as the database setup itself succeeded
     }
 }
 
@@ -184,5 +117,4 @@ module.exports = {
     setupDatabase,
     resetDatabase,
     showStats,
-    createSampleData
 };

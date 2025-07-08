@@ -55,49 +55,70 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     console.log(`Call ${isOnHold ? 'resumed' : 'on hold'}`);
   };
 
-  useEffect(() => {
-    if (!call) return;
+ // react-frontend/screens/ActiveCallScreen.tsx
 
-    let timer: NodeJS.Timeout;
+useEffect(() => {
+  if (!call) return;
 
-    // Simulate call progression for outgoing calls
-    if (call.direction === 'outgoing') {
-      // Initial state
-      setCallStatus('Calling...');
-      
-      // After 2 seconds, show ringing
-      const ringingTimeout = setTimeout(() => {
-        setCallStatus('Ringing...');
-      }, 2000);
+  let timer: NodeJS.Timeout;
+  
+  // Set initial status based on call direction and current status
+  if (call.direction === 'outgoing') {
+    setCallStatus(call.status === 'initiated' ? 'Calling...' : call.status);
+  } else {
+    // For incoming calls that are accepted
+    setCallStatus('Connected');
+    setIsConnected(true);
+    timer = setInterval(() => {
+      setDuration(prev => prev + 1);
+    }, 1000);
+  }
 
-      // After 5 seconds, simulate call being answered
-      const connectedTimeout = setTimeout(() => {
-        setCallStatus('Connected');
+  // Listen for real Twilio webhook events via WebSocket
+  const handleCallStatusUpdate = (data: any) => {
+    if (data.callSid === call.call_sid) {
+      // Map Twilio statuses to user-friendly messages
+      const statusMap: { [key: string]: string } = {
+        'initiated': 'Calling...',
+        'ringing': 'Ringing...',
+        'in-progress': 'Connected',
+        'answered': 'Connected',
+        'completed': 'Call Ended',
+        'failed': 'Call Failed',
+        'busy': 'Busy',
+        'no-answer': 'No Answer'
+      };
+
+      const newStatus = statusMap[data.status] || data.status;
+      setCallStatus(newStatus);
+
+      // Start timer when call is actually connected (from Twilio)
+      if (data.status === 'answered' || data.status === 'in-progress') {
         setIsConnected(true);
-        // Start the timer when call is connected
-        timer = setInterval(() => {
-          setDuration(prev => prev + 1);
-        }, 1000);
-      }, 5000);
+        if (!timer) {
+          timer = setInterval(() => {
+            setDuration(prev => prev + 1);
+          }, 1000);
+        }
+      }
 
-      return () => {
-        clearTimeout(ringingTimeout);
-        clearTimeout(connectedTimeout);
-        if (timer) clearInterval(timer);
-      };
-    } else {
-      // For incoming calls that are already answered
-      setCallStatus('Connected');
-      setIsConnected(true);
-      timer = setInterval(() => {
-        setDuration(prev => prev + 1);
-      }, 1000);
-
-      return () => {
-        if (timer) clearInterval(timer);
-      };
+      // Stop timer when call ends
+      if (['completed', 'failed', 'busy', 'no-answer'].includes(data.status)) {
+        if (timer) {
+          clearInterval(timer);
+        }
+      }
     }
-  }, [call?.direction]);
+  };
+
+  // Subscribe to real-time events
+  socketService.on('callStatusUpdate', handleCallStatusUpdate);
+
+  return () => {
+    socketService.off('callStatusUpdate', handleCallStatusUpdate);
+    if (timer) clearInterval(timer);
+  };
+}, [call?.call_sid]); // Changed dependency to call_sid
 
   useEffect(() => {
   if (call?.call_sid) {
@@ -233,7 +254,12 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
           {/* End Call Button */}
           <TouchableOpacity 
             style={styles.endCallButton}
-            onPress={onCallEnd}
+            onPress={ () => {
+              console.log('🔴 END CALL BUTTON PRESSED');
+              console.log('🔴 onCallEnd function:', onCallEnd);
+              console.log('🔴 About to call onCallEnd');
+              onCallEnd();
+            }}
           >
             <PhoneOffIcon size={32} color={Colors.textPrimary} />
           </TouchableOpacity>

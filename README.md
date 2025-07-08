@@ -87,11 +87,6 @@ REDIS_URL=redis://localhost:6379
 
 ### 4. Setup Database
 
-```bash
-# Initialize database with sample data
-npm run setup
-```
-
 ### 5. Start Development Servers
 
 ```bash
