@@ -1,18 +1,29 @@
-const database = require('../utils/database');
+const { PrismaClient } = require('@prisma/client');
 const { logger, logError } = require('../utils/logger');
+
+const prisma = new PrismaClient();
 
 class User {
     constructor(data = {}) {
         this.id = data.id;
         this.name = data.name;
         this.email = data.email;
-        this.phone = data.phone;
-        this.avatar_url = data.avatar_url;
+        this.phone = data.phoneNumber || data.phone;
+        this.avatar_url = data.avatarUrl || data.avatar_url;
         this.preferences = typeof data.preferences === 'string' 
             ? JSON.parse(data.preferences) 
             : data.preferences || {};
-        this.created_at = data.created_at;
-        this.updated_at = data.updated_at;
+        this.created_at = data.createdAt || data.created_at;
+        this.updated_at = data.updatedAt || data.updated_at;
+        
+        // Auth fields
+        this.username = data.username;
+        this.firstName = data.firstName;
+        this.lastName = data.lastName;
+        this.phoneNumber = data.phoneNumber;
+        this.role = data.role;
+        this.isActive = data.isActive;
+        this.lastLogin = data.lastLogin;
     }
 
     /**
@@ -22,18 +33,24 @@ class User {
      */
     static async create(userData) {
         try {
-            const { name, email, phone, avatar_url, preferences = {} } = userData;
+            const { name, email, phone, avatar_url, preferences = {}, username, firstName, lastName, phoneNumber } = userData;
             
-            const result = await database.run(
-                `INSERT INTO users (name, email, phone, avatar_url, preferences, updated_at) 
-                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-                [name, email, phone, avatar_url, JSON.stringify(preferences)]
-            );
+            const user = await prisma.user.create({
+                data: {
+                    name,
+                    email,
+                    phoneNumber: phoneNumber || phone,
+                    avatarUrl: avatar_url,
+                    preferences,
+                    username,
+                    firstName,
+                    lastName
+                }
+            });
 
-            const user = await User.findById(result.lastID);
-            logger.info('👤 User created', { userId: result.lastID, name, email });
+            logger.info('👤 User created', { userId: user.id, name, email });
             
-            return user;
+            return new User(user);
         } catch (error) {
             logError('Creating user', error, userData);
             throw error;
@@ -42,13 +59,15 @@ class User {
 
     /**
      * Find user by ID
-     * @param {number} id - User ID
+     * @param {string} id - User ID
      * @returns {Promise<User|null>} User instance or null
      */
     static async findById(id) {
         try {
-            const row = await database.get('SELECT * FROM users WHERE id = ?', [id]);
-            return row ? new User(row) : null;
+            const user = await prisma.user.findUnique({
+                where: { id: String(id) }
+            });
+            return user ? new User(user) : null;
         } catch (error) {
             logError('Finding user by ID', error, { id });
             return null;
@@ -62,8 +81,10 @@ class User {
      */
     static async findByEmail(email) {
         try {
-            const row = await database.get('SELECT * FROM users WHERE email = ?', [email]);
-            return row ? new User(row) : null;
+            const user = await prisma.user.findUnique({
+                where: { email }
+            });
+            return user ? new User(user) : null;
         } catch (error) {
             logError('Finding user by email', error, { email });
             return null;
@@ -77,8 +98,10 @@ class User {
      */
     static async findByPhone(phone) {
         try {
-            const row = await database.get('SELECT * FROM users WHERE phone = ?', [phone]);
-            return row ? new User(row) : null;
+            const user = await prisma.user.findFirst({
+                where: { phoneNumber: phone }
+            });
+            return user ? new User(user) : null;
         } catch (error) {
             logError('Finding user by phone', error, { phone });
             return null;
@@ -92,14 +115,15 @@ class User {
      */
     static async findAll(options = {}) {
         try {
-            const { limit = 100, offset = 0, orderBy = 'created_at DESC' } = options;
+            const { limit = 100, offset = 0, orderBy = 'createdAt' } = options;
             
-            const rows = await database.all(
-                `SELECT * FROM users ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
-                [limit, offset]
-            );
+            const users = await prisma.user.findMany({
+                take: limit,
+                skip: offset,
+                orderBy: { [orderBy.replace(' DESC', '').replace(' ASC', '')]: orderBy.includes('DESC') ? 'desc' : 'asc' }
+            });
             
-            return rows.map(row => new User(row));
+            return users.map(user => new User(user));
         } catch (error) {
             logError('Finding all users', error, options);
             return [];
@@ -113,40 +137,31 @@ class User {
      */
     async update(updates) {
         try {
-            const allowedFields = ['name', 'email', 'phone', 'avatar_url', 'preferences'];
-            const updateFields = [];
-            const values = [];
+            const allowedFields = ['name', 'email', 'phoneNumber', 'avatarUrl', 'preferences', 'firstName', 'lastName'];
+            const updateData = {};
 
             Object.keys(updates).forEach(key => {
                 if (allowedFields.includes(key)) {
-                    updateFields.push(`${key} = ?`);
-                    const value = key === 'preferences' 
-                        ? JSON.stringify(updates[key]) 
-                        : updates[key];
-                    values.push(value);
+                    updateData[key] = updates[key];
                 }
+                // Handle legacy field mappings
+                if (key === 'phone') updateData.phoneNumber = updates[key];
+                if (key === 'avatar_url') updateData.avatarUrl = updates[key];
             });
 
-            if (updateFields.length === 0) {
+            if (Object.keys(updateData).length === 0) {
                 return false;
             }
 
-            updateFields.push('updated_at = CURRENT_TIMESTAMP');
-            values.push(this.id);
-
-            await database.run(
-                `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
-                values
-            );
-
-            // Update instance properties
-            Object.keys(updates).forEach(key => {
-                if (allowedFields.includes(key)) {
-                    this[key] = updates[key];
-                }
+            const user = await prisma.user.update({
+                where: { id: this.id },
+                data: updateData
             });
 
-            logger.info('👤 User updated', { userId: this.id, updates });
+            // Update instance properties
+            Object.assign(this, new User(user));
+
+            logger.info('👤 User updated', { userId: this.id, updates: updateData });
             return true;
         } catch (error) {
             logError('Updating user', error, { userId: this.id, updates });
@@ -155,12 +170,14 @@ class User {
     }
 
     /**
-     * Delete user (soft delete by updating record)
+     * Delete user
      * @returns {Promise<boolean>} Success status
      */
     async delete() {
         try {
-            await database.run('DELETE FROM users WHERE id = ?', [this.id]);
+            await prisma.user.delete({
+                where: { id: this.id }
+            });
             logger.info('👤 User deleted', { userId: this.id });
             return true;
         } catch (error) {
@@ -172,7 +189,7 @@ class User {
     /**
      * Add call to user's call history
      * @param {Object} callData - Call data
-     * @returns {Promise<number|null>} Call history ID or null
+     * @returns {Promise<string|null>} Call ID or null
      */
     async addCallHistory(callData) {
         try {
@@ -187,21 +204,28 @@ class User {
                 contact_id = null
             } = callData;
 
-            const result = await database.run(
-                `INSERT INTO call_history 
-                 (user_id, contact_id, call_sid, direction, phone_number, status, duration, started_at, ended_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [this.id, contact_id, call_sid, direction, phone_number, status, duration, started_at, ended_at]
-            );
+            const call = await prisma.call.create({
+                data: {
+                    callSid: call_sid,
+                    userId: this.id,
+                    contactId: contact_id,
+                    direction,
+                    phoneNumber: phone_number,
+                    status,
+                    duration,
+                    startedAt: started_at ? new Date(started_at) : null,
+                    endedAt: ended_at ? new Date(ended_at) : null
+                }
+            });
 
             logger.info('📞 Call history added', { 
                 userId: this.id, 
-                callHistoryId: result.lastID, 
+                callId: call.id, 
                 call_sid,
                 direction 
             });
             
-            return result.lastID;
+            return call.id;
         } catch (error) {
             logError('Adding call history', error, { userId: this.id, callData });
             return null;
@@ -216,31 +240,31 @@ class User {
      */
     async updateCallHistory(call_sid, updates) {
         try {
-            const allowedFields = ['status', 'duration', 'ended_at'];
-            const updateFields = [];
-            const values = [];
+            const allowedFields = ['status', 'duration', 'endedAt'];
+            const updateData = {};
 
             Object.keys(updates).forEach(key => {
                 if (allowedFields.includes(key)) {
-                    updateFields.push(`${key} = ?`);
-                    values.push(updates[key]);
+                    updateData[key] = updates[key];
                 }
+                // Handle legacy field mappings
+                if (key === 'ended_at') updateData.endedAt = new Date(updates[key]);
             });
 
-            if (updateFields.length === 0) {
+            if (Object.keys(updateData).length === 0) {
                 return false;
             }
 
-            values.push(call_sid, this.id);
+            const result = await prisma.call.updateMany({
+                where: { 
+                    callSid: call_sid,
+                    userId: this.id
+                },
+                data: updateData
+            });
 
-            const result = await database.run(
-                `UPDATE call_history SET ${updateFields.join(', ')} 
-                 WHERE call_sid = ? AND user_id = ?`,
-                values
-            );
-
-            if (result.changes > 0) {
-                logger.info('📞 Call history updated', { userId: this.id, call_sid, updates });
+            if (result.count > 0) {
+                logger.info('📞 Call history updated', { userId: this.id, call_sid, updates: updateData });
                 return true;
             }
             
@@ -262,27 +286,41 @@ class User {
                 limit = 50, 
                 offset = 0, 
                 direction = null,
-                orderBy = 'created_at DESC' 
+                orderBy = 'createdAt' 
             } = options;
 
-            let query = `
-                SELECT ch.*, c.name as contact_name 
-                FROM call_history ch
-                LEFT JOIN contacts c ON ch.contact_id = c.id
-                WHERE ch.user_id = ?
-            `;
-            const params = [this.id];
-
+            const where = { userId: this.id };
             if (direction) {
-                query += ' AND ch.direction = ?';
-                params.push(direction);
+                where.direction = direction;
             }
 
-            query += ` ORDER BY ch.${orderBy} LIMIT ? OFFSET ?`;
-            params.push(limit, offset);
+            const calls = await prisma.call.findMany({
+                where,
+                include: {
+                    contact: {
+                        select: {
+                            name: true
+                        }
+                    }
+                },
+                take: limit,
+                skip: offset,
+                orderBy: { [orderBy.replace(' DESC', '').replace(' ASC', '')]: orderBy.includes('DESC') ? 'desc' : 'asc' }
+            });
 
-            const rows = await database.all(query, params);
-            return rows;
+            // Transform to match legacy format
+            return calls.map(call => ({
+                id: call.id,
+                call_sid: call.callSid,
+                direction: call.direction,
+                phone_number: call.phoneNumber,
+                status: call.status,
+                duration: call.duration,
+                started_at: call.startedAt,
+                ended_at: call.endedAt,
+                created_at: call.createdAt,
+                contact_name: call.contact?.name || null
+            }));
         } catch (error) {
             logError('Getting call history', error, { userId: this.id, options });
             return [];
@@ -296,37 +334,33 @@ class User {
      */
     async getCallStats(options = {}) {
         try {
-            const { 
-                startDate = null, 
-                endDate = null 
-            } = options;
+            const { startDate = null, endDate = null } = options;
 
-            let whereClause = 'WHERE user_id = ?';
-            const params = [this.id];
-
-            if (startDate) {
-                whereClause += ' AND created_at >= ?';
-                params.push(startDate);
+            const where = { userId: this.id };
+            if (startDate || endDate) {
+                where.createdAt = {};
+                if (startDate) where.createdAt.gte = new Date(startDate);
+                if (endDate) where.createdAt.lte = new Date(endDate);
             }
 
-            if (endDate) {
-                whereClause += ' AND created_at <= ?';
-                params.push(endDate);
-            }
-
-            const [totalCalls, inboundCalls, outboundCalls, totalDuration] = await Promise.all([
-                database.get(`SELECT COUNT(*) as count FROM call_history ${whereClause}`, params),
-                database.get(`SELECT COUNT(*) as count FROM call_history ${whereClause} AND direction = 'inbound'`, params),
-                database.get(`SELECT COUNT(*) as count FROM call_history ${whereClause} AND direction = 'outbound'`, params),
-                database.get(`SELECT SUM(duration) as total FROM call_history ${whereClause}`, params)
+            const [totalCalls, inboundCalls, outboundCalls, durationSum] = await Promise.all([
+                prisma.call.count({ where }),
+                prisma.call.count({ where: { ...where, direction: 'inbound' } }),
+                prisma.call.count({ where: { ...where, direction: 'outbound' } }),
+                prisma.call.aggregate({
+                    where,
+                    _sum: { duration: true }
+                })
             ]);
 
+            const totalDuration = durationSum._sum.duration || 0;
+
             return {
-                totalCalls: totalCalls.count,
-                inboundCalls: inboundCalls.count,
-                outboundCalls: outboundCalls.count,
-                totalDuration: totalDuration.total || 0,
-                averageDuration: totalCalls.count > 0 ? Math.round((totalDuration.total || 0) / totalCalls.count) : 0
+                totalCalls,
+                inboundCalls,
+                outboundCalls,
+                totalDuration,
+                averageDuration: totalCalls > 0 ? Math.round(totalDuration / totalCalls) : 0
             };
         } catch (error) {
             logError('Getting call stats', error, { userId: this.id, options });
@@ -353,7 +387,14 @@ class User {
             avatar_url: this.avatar_url,
             preferences: this.preferences,
             created_at: this.created_at,
-            updated_at: this.updated_at
+            updated_at: this.updated_at,
+            username: this.username,
+            firstName: this.firstName,
+            lastName: this.lastName,
+            phoneNumber: this.phoneNumber,
+            role: this.role,
+            isActive: this.isActive,
+            lastLogin: this.lastLogin
         };
     }
 }

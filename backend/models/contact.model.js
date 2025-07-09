@@ -1,17 +1,19 @@
-const database = require('../utils/database');
+const { PrismaClient } = require('@prisma/client');
 const { logger, logError } = require('../utils/logger');
+
+const prisma = new PrismaClient();
 
 class Contact {
     constructor(data = {}) {
         this.id = data.id;
-        this.user_id = data.user_id;
+        this.user_id = data.userId || data.user_id;
         this.name = data.name;
         this.phone = data.phone;
         this.email = data.email;
         this.notes = data.notes;
-        this.is_favorite = Boolean(data.is_favorite);
-        this.created_at = data.created_at;
-        this.updated_at = data.updated_at;
+        this.is_favorite = Boolean(data.isFavorite ?? data.is_favorite);
+        this.created_at = data.createdAt || data.created_at;
+        this.updated_at = data.updatedAt || data.updated_at;
     }
 
     /**
@@ -27,21 +29,25 @@ class Contact {
                 throw new Error('user_id, name, and phone are required');
             }
 
-            const result = await database.run(
-                `INSERT INTO contacts (user_id, name, phone, email, notes, is_favorite, updated_at) 
-                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-                [user_id, name, phone, email, notes, is_favorite ? 1 : 0]
-            );
+            const contact = await prisma.contact.create({
+                data: {
+                    userId: String(user_id),
+                    name,
+                    phone,
+                    email,
+                    notes,
+                    isFavorite: Boolean(is_favorite)
+                }
+            });
 
-            const contact = await Contact.findById(result.lastID);
             logger.info('👥 Contact created', { 
-                contactId: result.lastID, 
+                contactId: contact.id, 
                 userId: user_id, 
                 name, 
                 phone 
             });
             
-            return contact;
+            return new Contact(contact);
         } catch (error) {
             logError('Creating contact', error, contactData);
             throw error;
@@ -50,13 +56,15 @@ class Contact {
 
     /**
      * Find contact by ID
-     * @param {number} id - Contact ID
+     * @param {string} id - Contact ID
      * @returns {Promise<Contact|null>} Contact instance or null
      */
     static async findById(id) {
         try {
-            const row = await database.get('SELECT * FROM contacts WHERE id = ?', [id]);
-            return row ? new Contact(row) : null;
+            const contact = await prisma.contact.findUnique({
+                where: { id: String(id) }
+            });
+            return contact ? new Contact(contact) : null;
         } catch (error) {
             logError('Finding contact by ID', error, { id });
             return null;
@@ -66,16 +74,18 @@ class Contact {
     /**
      * Find contact by phone number and user
      * @param {string} phone - Phone number
-     * @param {number} userId - User ID
+     * @param {string} userId - User ID
      * @returns {Promise<Contact|null>} Contact instance or null
      */
     static async findByPhone(phone, userId) {
         try {
-            const row = await database.get(
-                'SELECT * FROM contacts WHERE phone = ? AND user_id = ?', 
-                [phone, userId]
-            );
-            return row ? new Contact(row) : null;
+            const contact = await prisma.contact.findFirst({
+                where: { 
+                    phone,
+                    userId: String(userId)
+                }
+            });
+            return contact ? new Contact(contact) : null;
         } catch (error) {
             logError('Finding contact by phone', error, { phone, userId });
             return null;
@@ -84,7 +94,7 @@ class Contact {
 
     /**
      * Find contacts by user ID
-     * @param {number} userId - User ID
+     * @param {string} userId - User ID
      * @param {Object} options - Query options
      * @returns {Promise<Array<Contact>>} Array of contact instances
      */
@@ -98,24 +108,32 @@ class Contact {
                 orderBy = 'name ASC' 
             } = options;
 
-            let query = 'SELECT * FROM contacts WHERE user_id = ?';
-            const params = [userId];
+            const where = { userId: String(userId) };
 
             if (favoritesOnly) {
-                query += ' AND is_favorite = 1';
+                where.isFavorite = true;
             }
 
             if (search) {
-                query += ' AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)';
-                const searchTerm = `%${search}%`;
-                params.push(searchTerm, searchTerm, searchTerm);
+                where.OR = [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { phone: { contains: search } },
+                    { email: { contains: search, mode: 'insensitive' } }
+                ];
             }
 
-            query += ` ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
-            params.push(limit, offset);
+            // Parse orderBy (e.g., "name ASC" -> { name: 'asc' })
+            const [field, direction = 'asc'] = orderBy.toLowerCase().split(' ');
+            const orderByClause = { [field]: direction };
 
-            const rows = await database.all(query, params);
-            return rows.map(row => new Contact(row));
+            const contacts = await prisma.contact.findMany({
+                where,
+                take: limit,
+                skip: offset,
+                orderBy: orderByClause
+            });
+
+            return contacts.map(contact => new Contact(contact));
         } catch (error) {
             logError('Finding contacts by user ID', error, { userId, options });
             return [];
@@ -125,7 +143,7 @@ class Contact {
     /**
      * Search contacts by name or phone
      * @param {string} searchTerm - Search term
-     * @param {number} userId - User ID
+     * @param {string} userId - User ID
      * @param {Object} options - Query options
      * @returns {Promise<Array<Contact>>} Array of matching contacts
      */
@@ -133,34 +151,25 @@ class Contact {
         try {
             const { limit = 50, offset = 0 } = options;
             
-            const query = `
-                SELECT * FROM contacts 
-                WHERE user_id = ? AND (
-                    name LIKE ? OR 
-                    phone LIKE ? OR 
-                    email LIKE ?
-                )
-                ORDER BY 
-                    CASE 
-                        WHEN name LIKE ? THEN 1 
-                        WHEN phone LIKE ? THEN 2 
-                        ELSE 3 
-                    END,
-                    name ASC
-                LIMIT ? OFFSET ?
-            `;
+            const where = {
+                userId: String(userId),
+                OR: [
+                    { name: { contains: searchTerm, mode: 'insensitive' } },
+                    { phone: { contains: searchTerm } },
+                    { email: { contains: searchTerm, mode: 'insensitive' } }
+                ]
+            };
+
+            const contacts = await prisma.contact.findMany({
+                where,
+                take: limit,
+                skip: offset,
+                orderBy: [
+                    { name: 'asc' }
+                ]
+            });
             
-            const searchPattern = `%${searchTerm}%`;
-            const exactPattern = `${searchTerm}%`;
-            
-            const rows = await database.all(query, [
-                userId,
-                searchPattern, searchPattern, searchPattern,
-                exactPattern, exactPattern,
-                limit, offset
-            ]);
-            
-            return rows.map(row => new Contact(row));
+            return contacts.map(contact => new Contact(contact));
         } catch (error) {
             logError('Searching contacts', error, { searchTerm, userId, options });
             return [];
@@ -174,40 +183,32 @@ class Contact {
      */
     async update(updates) {
         try {
-            const allowedFields = ['name', 'phone', 'email', 'notes', 'is_favorite'];
-            const updateFields = [];
-            const values = [];
+            const allowedFields = ['name', 'phone', 'email', 'notes', 'isFavorite'];
+            const updateData = {};
 
             Object.keys(updates).forEach(key => {
                 if (allowedFields.includes(key)) {
-                    updateFields.push(`${key} = ?`);
-                    const value = key === 'is_favorite' 
-                        ? (updates[key] ? 1 : 0) 
-                        : updates[key];
-                    values.push(value);
+                    updateData[key] = updates[key];
+                }
+                // Handle legacy field mappings
+                if (key === 'is_favorite') {
+                    updateData.isFavorite = Boolean(updates[key]);
                 }
             });
 
-            if (updateFields.length === 0) {
+            if (Object.keys(updateData).length === 0) {
                 return false;
             }
 
-            updateFields.push('updated_at = CURRENT_TIMESTAMP');
-            values.push(this.id);
-
-            await database.run(
-                `UPDATE contacts SET ${updateFields.join(', ')} WHERE id = ?`,
-                values
-            );
-
-            // Update instance properties
-            Object.keys(updates).forEach(key => {
-                if (allowedFields.includes(key)) {
-                    this[key] = key === 'is_favorite' ? Boolean(updates[key]) : updates[key];
-                }
+            const contact = await prisma.contact.update({
+                where: { id: this.id },
+                data: updateData
             });
 
-            logger.info('👥 Contact updated', { contactId: this.id, updates });
+            // Update instance properties
+            Object.assign(this, new Contact(contact));
+
+            logger.info('👥 Contact updated', { contactId: this.id, updates: updateData });
             return true;
         } catch (error) {
             logError('Updating contact', error, { contactId: this.id, updates });
@@ -221,7 +222,9 @@ class Contact {
      */
     async delete() {
         try {
-            await database.run('DELETE FROM contacts WHERE id = ?', [this.id]);
+            await prisma.contact.delete({
+                where: { id: this.id }
+            });
             logger.info('👥 Contact deleted', { contactId: this.id });
             return true;
         } catch (error) {
@@ -236,17 +239,19 @@ class Contact {
      */
     async toggleFavorite() {
         try {
-            const newFavoriteStatus = !this.is_favorite;
-            const success = await this.update({ is_favorite: newFavoriteStatus });
+            const contact = await prisma.contact.update({
+                where: { id: this.id },
+                data: { isFavorite: !this.is_favorite }
+            });
             
-            if (success) {
-                logger.info('👥 Contact favorite toggled', { 
-                    contactId: this.id, 
-                    is_favorite: newFavoriteStatus 
-                });
-            }
+            this.is_favorite = contact.isFavorite;
             
-            return success;
+            logger.info('👥 Contact favorite toggled', { 
+                contactId: this.id, 
+                is_favorite: this.is_favorite 
+            });
+            
+            return true;
         } catch (error) {
             logError('Toggling contact favorite', error, { contactId: this.id });
             return false;
@@ -260,17 +265,31 @@ class Contact {
      */
     async getCallHistory(options = {}) {
         try {
-            const { limit = 50, offset = 0, orderBy = 'created_at DESC' } = options;
+            const { limit = 50, offset = 0, orderBy = 'createdAt DESC' } = options;
             
-            const query = `
-                SELECT * FROM call_history 
-                WHERE contact_id = ? 
-                ORDER BY ${orderBy} 
-                LIMIT ? OFFSET ?
-            `;
-            
-            const rows = await database.all(query, [this.id, limit, offset]);
-            return rows;
+            // Parse orderBy
+            const [field, direction = 'desc'] = orderBy.toLowerCase().replace('created_at', 'createdat').split(' ');
+            const orderByClause = { [field]: direction };
+
+            const calls = await prisma.call.findMany({
+                where: { contactId: this.id },
+                take: limit,
+                skip: offset,
+                orderBy: orderByClause
+            });
+
+            // Transform to match legacy format
+            return calls.map(call => ({
+                id: call.id,
+                call_sid: call.callSid,
+                direction: call.direction,
+                phone_number: call.phoneNumber,
+                status: call.status,
+                duration: call.duration,
+                started_at: call.startedAt,
+                ended_at: call.endedAt,
+                created_at: call.createdAt
+            }));
         } catch (error) {
             logError('Getting contact call history', error, { contactId: this.id, options });
             return [];
@@ -283,21 +302,30 @@ class Contact {
      */
     async getCallStats() {
         try {
-            const [totalCalls, inboundCalls, outboundCalls, totalDuration, lastCall] = await Promise.all([
-                database.get('SELECT COUNT(*) as count FROM call_history WHERE contact_id = ?', [this.id]),
-                database.get('SELECT COUNT(*) as count FROM call_history WHERE contact_id = ? AND direction = "inbound"', [this.id]),
-                database.get('SELECT COUNT(*) as count FROM call_history WHERE contact_id = ? AND direction = "outbound"', [this.id]),
-                database.get('SELECT SUM(duration) as total FROM call_history WHERE contact_id = ?', [this.id]),
-                database.get('SELECT created_at FROM call_history WHERE contact_id = ? ORDER BY created_at DESC LIMIT 1', [this.id])
+            const [totalCalls, inboundCalls, outboundCalls, durationSum, lastCall] = await Promise.all([
+                prisma.call.count({ where: { contactId: this.id } }),
+                prisma.call.count({ where: { contactId: this.id, direction: 'inbound' } }),
+                prisma.call.count({ where: { contactId: this.id, direction: 'outbound' } }),
+                prisma.call.aggregate({
+                    where: { contactId: this.id },
+                    _sum: { duration: true }
+                }),
+                prisma.call.findFirst({
+                    where: { contactId: this.id },
+                    orderBy: { createdAt: 'desc' },
+                    select: { createdAt: true }
+                })
             ]);
 
+            const totalDuration = durationSum._sum.duration || 0;
+
             return {
-                totalCalls: totalCalls.count,
-                inboundCalls: inboundCalls.count,
-                outboundCalls: outboundCalls.count,
-                totalDuration: totalDuration.total || 0,
-                averageDuration: totalCalls.count > 0 ? Math.round((totalDuration.total || 0) / totalCalls.count) : 0,
-                lastCallDate: lastCall ? lastCall.created_at : null
+                totalCalls,
+                inboundCalls,
+                outboundCalls,
+                totalDuration,
+                averageDuration: totalCalls > 0 ? Math.round(totalDuration / totalCalls) : 0,
+                lastCallDate: lastCall ? lastCall.createdAt : null
             };
         } catch (error) {
             logError('Getting contact call stats', error, { contactId: this.id });

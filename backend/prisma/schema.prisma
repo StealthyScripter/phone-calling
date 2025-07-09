@@ -9,41 +9,81 @@ datasource db {
 
 model User {
   id          String   @id @default(uuid())
-  email       String   @unique
-  username    String   @unique
-  password    String   // hashed password
+  email       String?  @unique
+  username    String?  @unique
+  password    String?  // hashed password (nullable for non-auth users)
   firstName   String?
   lastName    String?
   phoneNumber String?
+  
+  // Legacy fields from SQLite schema
+  name        String   // Required field from old schema
+  avatarUrl   String?  @map("avatar_url")
+  preferences Json     @default("{}")
+  
+  // Auth fields
   role        String   @default("USER") // USER, ADMIN, SUPER_ADMIN
   isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
   lastLogin   DateTime?
+  
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  // Call history relationship
-  calls Call[]
+  // Relationships
+  contacts    Contact[]
+  calls       Call[]
 
   @@map("users")
 }
 
-model Call {
-  id          String   @id @default(uuid())
-  callSid     String   @unique // Twilio Call SID
-  userId      String
-  direction   String   // INBOUND, OUTBOUND
-  fromNumber  String
-  toNumber    String
-  status      String   // INITIATED, RINGING, ANSWERED, COMPLETED, FAILED, BUSY, NO_ANSWER, CANCELED
-  duration    Int?     // in seconds
-  startTime   DateTime
-  endTime     DateTime?
-  cost        Float?   // call cost if available
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model Contact {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  name       String
+  phone      String
+  email      String?
+  notes      String?
+  isFavorite Boolean  @default(false) @map("is_favorite")
+  
+  // Timestamps
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Relationships
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calls      Call[]
 
-  @@map("calls")
+  @@map("contacts")
+  @@index([userId])
+  @@index([phone])
+}
+
+model Call {
+  id          String   @id @default(uuid())
+  callSid     String   @unique @map("call_sid") // Twilio Call SID
+  userId      String?  @map("user_id")
+  contactId   String?  @map("contact_id")
+  direction   String   // INBOUND, OUTBOUND  
+  phoneNumber String   @map("phone_number")
+  fromNumber  String?  @map("from_number")
+  toNumber    String?  @map("to_number")
+  status      String   // INITIATED, RINGING, ANSWERED, COMPLETED, FAILED, BUSY, NO_ANSWER, CANCELED
+  duration    Int?     @default(0) // in seconds
+  startedAt   DateTime? @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  cost        Float?   // call cost if available
+  
+  // Timestamps
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contact     Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@map("call_history")
+  @@index([userId])
+  @@index([callSid])
+  @@index([createdAt(sort: Desc)])
 }

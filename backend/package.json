@@ -1,19 +1,32 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "Phone Calling MVP with PostgreSQL and Prisma",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "db:setup": "node scripts/setupDatabase.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "db:setup": "npm run db:generate && npm run db:push && node scripts/setupDatabase.js",
+    "db:reset": "npm run db:generate && node scripts/setupDatabase.js reset",
+    "db:stats": "npm run db:generate && node scripts/setupDatabase.js stats",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:migrate:reset": "prisma migrate reset",
+    "db:studio": "prisma studio",
+    "db:seed": "prisma db seed",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "prisma": {
+    "seed": "node scripts/setupDatabase.js"
+  },
+  "keywords": [
+    "twilio",
+    "phone",
+    "calling",
+    "prisma",
+    "postgresql"
+  ],
   "author": "Wendot",
   "license": "ISC",
   "type": "commonjs",
@@ -29,7 +42,6 @@
     "jsonwebtoken": "^9.0.2",
     "redis": "^5.5.6",
     "socket.io": "^4.8.1",
-    "sqlite3": "^5.1.7",
     "twilio": "^5.7.1",
     "winston": "^3.17.0"
   },
