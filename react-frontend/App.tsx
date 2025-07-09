@@ -109,7 +109,167 @@ const AppContent = () => {
     }
   }, [token]);
 
-  // Loading state
+  //Socket setup with stable dependencies
+  useEffect(() => {
+    if (!user) return; // Don't setup socket if no user
+
+    // Create stable handler references
+    const handleIncomingCall = async (data: any) => {
+      console.log('Incoming call received:', data);
+      const newIncomingCall: Call = {
+        id: data.id || Date.now(),
+        call_sid: data.call_sid || '',
+        user_id: String(user.id),
+        direction: 'incoming',
+        from_number: data.from_number || data.phone_number || '',
+        to_number: data.to_number || '',
+        contact_name: data.contact_name || 'Unknown Caller',
+        phone_number: data.from_number || data.phone_number || '',
+        status: 'ringing',
+        duration: 0,
+        start_time: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      
+      setIncomingCall(newIncomingCall);
+      
+      if (navigationRef) {
+        navigationRef.navigate('IncomingCall', { call: newIncomingCall });
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Incoming Call",
+          body: `Call from ${data.contact_name || data.from_number}`,
+          sound: 'default',
+        },
+        trigger: null,
+      });
+    };
+
+    const handleCallInitiated = (data: any) => {
+      console.log('Call initiated:', data);
+      
+      setActiveCall(prevCall => {
+        if (prevCall) {
+          const updatedCall: Call = {
+            ...prevCall,
+            call_sid: data.callSid || data.call_sid || '',
+            status: 'initiated',
+            from_number: data.from || prevCall.from_number,
+            to_number: data.to || prevCall.to_number,
+          };
+          console.log('🟢 Updated activeCall with real call_sid:', updatedCall.call_sid);
+          
+          // Navigate after state update
+          setTimeout(() => {
+            if (navigationRef) {
+              navigationRef.navigate('ActiveCall', { call: updatedCall });
+            }
+          }, 100);
+          
+          return updatedCall;
+        } else {
+          const newActiveCall: Call = {
+            id: data.id || Date.now(),
+            call_sid: data.callSid || data.call_sid || '',
+            user_id: String(user.id),
+            direction: 'outgoing',
+            from_number: data.from || '',
+            to_number: data.to || data.phone_number || '',
+            contact_name: data.contact_name || 'Unknown',
+            phone_number: data.to || data.phone_number || '',
+            status: 'initiated',
+            duration: 0,
+            start_time: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          console.log('🟢 Created new activeCall with call_sid:', newActiveCall.call_sid);
+          
+          // Navigate after state update
+          setTimeout(() => {
+            if (navigationRef) {
+              navigationRef.navigate('ActiveCall', { call: newActiveCall });
+            }
+          }, 100);
+          
+          return newActiveCall;
+        }
+      });
+    };
+
+    const handleCallStatusUpdate = (data: any) => {
+      console.log('Call status update:', data);
+      setActiveCall(prevCall => {
+        if (prevCall && prevCall.call_sid === data.call_sid) {
+          return { ...prevCall, status: data.status };
+        }
+        return prevCall;
+      });
+    };
+
+    const handleCallEnded = (data: any) => {
+      console.log('🟡 SOCKET EVENT: Call ended received:', data);
+      setIsUserEndingCall(prev => {
+        if (!prev) { // Only handle if user didn't initiate
+          setActiveCall(null);
+          setIncomingCall(null);
+          if (navigationRef) {
+            navigationRef.navigate('Main');
+          }
+        }
+        return prev;
+      });
+    };
+
+    const handleCallAccepted = (data: any) => {
+      console.log('Call accepted:', data);
+      setIncomingCall(prevIncoming => {
+        if (prevIncoming && prevIncoming.call_sid === data.callSid) {
+          const acceptedCall: Call = {
+            ...prevIncoming,
+            status: 'in-progress',
+            start_time: new Date().toISOString(),
+          };
+          setActiveCall(acceptedCall);
+          setTimeout(() => {
+            navigationRef?.navigate('ActiveCall', { call: acceptedCall });
+          }, 100);
+          return null; // Clear incoming call
+        }
+        return prevIncoming;
+      });
+    };
+
+    const handleCallRejected = (data: any) => {
+      console.log('Call rejected:', data);
+      setIncomingCall(null);
+      navigationRef?.navigate('Main');
+    };
+
+    // Setup socket listeners
+    socketService.connect();
+    socketService.on('incomingCall', handleIncomingCall);
+    socketService.on('callInitiated', handleCallInitiated);
+    socketService.on('callStatusUpdate', handleCallStatusUpdate);
+    socketService.on('callEnded', handleCallEnded);
+    socketService.on('callAccepted', handleCallAccepted);
+    socketService.on('callRejected', handleCallRejected);
+
+    // Cleanup function
+    return () => {
+      socketService.off('incomingCall', handleIncomingCall);
+      socketService.off('callInitiated', handleCallInitiated);
+      socketService.off('callStatusUpdate', handleCallStatusUpdate);
+      socketService.off('callEnded', handleCallEnded);
+      socketService.off('callAccepted', handleCallAccepted);
+      socketService.off('callRejected', handleCallRejected);
+      socketService.disconnect();
+    };
+  }, [user?.id, navigationRef]);
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -120,7 +280,6 @@ const AppContent = () => {
     );
   }
 
-  // Show auth screens if not logged in
   if (!user) {
     return (
       <NavigationContainer theme={navigationTheme}>
@@ -129,98 +288,7 @@ const AppContent = () => {
     );
   }
 
-  // Call handler functions
-  const handleIncomingCall = async(data: any) => {
-    console.log('Incoming call received:', data);
-    const newIncomingCall: Call = {
-      id: data.id || Date.now(),
-      call_sid: data.call_sid || '',
-      user_id: user.id,
-      direction: 'incoming',
-      from_number: data.from_number || data.phone_number || '',
-      to_number: data.to_number || '',
-      contact_name: data.contact_name || 'Unknown Caller',
-      phone_number: data.from_number || data.phone_number || '',
-      status: 'ringing',
-      duration: 0,
-      start_time: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    
-    setIncomingCall(newIncomingCall);
-    
-    if (navigationRef) {
-      navigationRef.navigate('IncomingCall', { call: newIncomingCall });
-    }
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "Incoming Call",
-        body: `Call from ${data.contact_name || data.from_number}`,
-        sound: 'default',
-      },
-      trigger: null,
-    });
-  };
-
-  const handleCallInitiated = (data: any) => {
-    console.log('Call initiated:', data);
-    
-    if (activeCall) {
-      const updatedCall: Call = {
-        ...activeCall,
-        call_sid: data.callSid || data.call_sid || '',
-        status: 'initiated',
-        from_number: data.from || activeCall.from_number,
-        to_number: data.to || activeCall.to_number,
-      };
-      setActiveCall(updatedCall);
-      console.log('🟢 Updated activeCall with real call_sid:', updatedCall.call_sid);
-    } else {
-      const newActiveCall: Call = {
-        id: data.id || Date.now(),
-        call_sid: data.callSid || data.call_sid || '',
-        user_id: user.id,
-        direction: 'outgoing',
-        from_number: data.from || '',
-        to_number: data.to || data.phone_number || '',
-        contact_name: data.contact_name || 'Unknown',
-        phone_number: data.to || data.phone_number || '',
-        status: 'initiated',
-        duration: 0,
-        start_time: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setActiveCall(newActiveCall);
-      console.log('🟢 Created new activeCall with call_sid:', newActiveCall.call_sid);
-    }
-    
-    if (navigationRef) {
-      navigationRef.navigate('ActiveCall', { call: activeCall });
-    }
-  };
-
-  const handleCallStatusUpdate = (data: any) => {
-    console.log('Call status update:', data);
-    if (activeCall && activeCall.call_sid === data.call_sid) {
-      setActiveCall(prev => prev ? { ...prev, status: data.status } : null);
-    }
-  };
-
-  const handleCallEnded = (data: any) => {
-    console.log('🟡 SOCKET EVENT: Call ended received:', data);
-    if (!isUserEndingCall) {
-      setActiveCall(null);
-      setIncomingCall(null);
-      if (navigationRef) {
-        navigationRef.navigate('Main');
-      }
-    }
-  };
-
-  const handleCallEnd = async() => {
+  const handleCallEnd = async () => {
     console.log('🟢 USER INITIATED: handleCallEnd called');
     setIsUserEndingCall(true);
     
@@ -241,10 +309,13 @@ const AppContent = () => {
     }
   };
 
-  const handleIncomingCallAccept = async() => {
-    if (incomingCall) {
+  const handleIncomingCallAccept = async () => {
+    if (incomingCall && user) {
       try {
-        await ApiService.acceptCall(incomingCall.call_sid, user.id);
+        // Convert user.id to string if needed
+        const userId = typeof user.id === 'number' ? user.id : Number(user.id);
+        await ApiService.acceptCall(incomingCall.call_sid, userId);
+        
         const acceptedCall: Call = {
           ...incomingCall,
           status: 'in-progress',
@@ -261,10 +332,11 @@ const AppContent = () => {
     }
   };
 
-  const handleIncomingCallReject = async() => {
-    if (incomingCall) {
+  const handleIncomingCallReject = async () => {
+    if (incomingCall && user) {
       try {
-        await ApiService.rejectCall(incomingCall.call_sid, user.id);
+        const userId = typeof user.id === 'number' ? user.id : Number(user.id);
+        await ApiService.rejectCall(incomingCall.call_sid, userId);
       } catch (error) {
         console.error('Reject call error:', error);
       }
@@ -275,11 +347,13 @@ const AppContent = () => {
     }
   };
 
-  const handleOutgoingCall = async(phoneNumber: string, contactName?: string) => {
+  const handleOutgoingCall = async (phoneNumber: string, contactName?: string) => {
+    if (!user) return;
+    
     const newCall: Call = {
       id: Date.now(),
       call_sid: `temp_${Date.now()}`,
-      user_id: user.id,
+      user_id: String(user.id),
       direction: 'outgoing',
       from_number: user.phoneNumber || '',
       to_number: phoneNumber,
@@ -299,48 +373,6 @@ const AppContent = () => {
     }
   };
 
-  const handleCallAccepted = (data: any) => {
-    console.log('Call accepted:', data);
-    if (incomingCall && incomingCall.call_sid === data.callSid) {
-      const acceptedCall: Call = {
-        ...incomingCall,
-        status: 'in-progress',
-        start_time: new Date().toISOString(),
-      };
-      setActiveCall(acceptedCall);
-      setIncomingCall(null);
-      navigationRef?.navigate('ActiveCall', { call: acceptedCall });
-    }
-  };
-
-  const handleCallRejected = (data: any) => {
-    console.log('Call rejected:', data);
-    setIncomingCall(null);
-    navigationRef?.navigate('Main');
-  };
-
-  // Socket setup
-  useEffect(() => {
-    socketService.connect();
-    socketService.on('incomingCall', handleIncomingCall);
-    socketService.on('callInitiated', handleCallInitiated);
-    socketService.on('callStatusUpdate', handleCallStatusUpdate);
-    socketService.on('callEnded', handleCallEnded);
-    socketService.on('callAccepted', handleCallAccepted);
-    socketService.on('callRejected', handleCallRejected);
-
-    return () => {
-      socketService.off('incomingCall', handleIncomingCall);
-      socketService.off('callInitiated', handleCallInitiated);
-      socketService.off('callStatusUpdate', handleCallStatusUpdate);
-      socketService.off('callEnded', handleCallEnded);
-      socketService.off('callAccepted', handleCallAccepted);
-      socketService.off('callRejected', handleCallRejected);
-      socketService.disconnect();
-    };
-  }, [incomingCall, activeCall, user]);
-
-  // Main app content - authenticated user
   return (
     <NavigationContainer 
       theme={navigationTheme}

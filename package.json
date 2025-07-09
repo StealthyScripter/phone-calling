@@ -7,48 +7,37 @@
     "install:all": "npm install && npm run install:backend && npm run install:frontend",
     "install:backend": "cd backend && npm install",
     "install:frontend": "cd react-frontend && npm install",
-    
     "setup": "npm run install:all && npm run setup:backend",
-    "setup:backend": "cd backend && npm run db:setup",
+    "setup:backend": "cd backend && npm run db:generate && npm run db:push && npm run db:setup",
     "setup:docker": "cd backend && docker-compose up -d",
-    
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,magenta\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd react-frontend && npm start",
-    
     "start": "npm run dev",
     "start:backend": "cd backend && npm start",
     "start:frontend": "cd react-frontend && npm start",
-    
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "cd backend && npm test",
     "test:frontend": "cd react-frontend && npm test",
     "test:connectivity": "cd backend && node test-connectivity.js",
-    
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd react-frontend && npm run build",
-    
     "clean": "npm run clean:backend && npm run clean:frontend && npm run clean:root",
     "clean:backend": "cd backend && rm -rf node_modules package-lock.json",
     "clean:frontend": "cd react-frontend && rm -rf node_modules package-lock.json",
     "clean:root": "rm -rf node_modules package-lock.json",
-    
     "reset": "npm run clean && npm run setup",
-    
     "docker:up": "cd backend && docker-compose up -d",
     "docker:down": "cd backend && docker-compose down",
     "docker:logs": "cd backend && docker-compose logs -f",
-    
     "ngrok": "ngrok http 3000",
     "health": "curl http://localhost:3000/api/health | jq",
-    
     "logs:backend": "cd backend && tail -f logs/combined.log",
     "logs:error": "cd backend && tail -f logs/error.log",
-    
     "db:setup": "cd backend && npm run db:setup",
-    "db:reset": "cd backend && npm run db:setup reset",
-    "db:stats": "cd backend && npm run db:setup stats"
+    "db:reset": "cd backend && npm run db:reset",
+    "db:stats": "cd backend && npm run db:stats"
   },
   "keywords": [
     "phone",
@@ -57,11 +46,12 @@
     "react-native",
     "nodejs",
     "express",
-    "sqlite",
+    "postgresql",
+    "prisma",
     "redis",
     "websocket"
   ],
-  "author": "Your Name",
+  "author": "Wendot",
   "license": "ISC",
   "devDependencies": {
     "concurrently": "^8.2.2",
@@ -74,9 +64,5 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/yourusername/phone-calling-app.git"
-  },
-  "workspaces": [
-    "backend",
-    "react-frontend"
-  ]
+  }
 }
