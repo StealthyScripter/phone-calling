@@ -1,149 +1,186 @@
 // Global state
 let activeCalls = [];
 let pendingCalls = [];
-let users = [];
 let contacts = [];
-let currentUser = null;
 let callHistory = [];
 let socket = null;
+let authToken = null;
+let currentUser = null;
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
-    await loadInitialData();
-    setupEventListeners();
+    checkAuthentication();
 });
 
-// WebSocket connection and real-time updates
-function initializeWebSocket() {
-    socket = io();
+// ===================================
+// AUTHENTICATION FUNCTIONS
+// ===================================
+
+function checkAuthentication() {
+    authToken = localStorage.getItem('authToken');
+    currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
     
-    socket.on('connect', () => {
-        console.log('📡 Connected to server');
-        addLog('📡 Connected to real-time updates');
-        document.getElementById('connectionStatus').textContent = '📡 Connected';
-        document.getElementById('connectionStatus').className = 'connection-status connected';
-    });
-    
-    socket.on('disconnect', () => {
-        console.log('📡 Disconnected from server');
-        addLog('📡 Disconnected from real-time updates');
-        document.getElementById('connectionStatus').textContent = '📡 Disconnected';
-        document.getElementById('connectionStatus').className = 'connection-status disconnected';
-    });
-    
-    // Listen for call events
-    socket.on('incomingCall', (data) => {
-        addLog(`📞 Incoming call from ${data.contact ? data.contact.name : data.from}`);
-        loadPendingCalls();
-        
-        // Show browser notification if supported
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Incoming Call', {
-                body: `Call from ${data.contact ? data.contact.name : data.from}`,
-                icon: '📞'
-            });
-        }
-    });
-    
-    socket.on('callInitiated', (data) => {
-        addLog(`📞 Calling ${data.contact ? data.contact.name : data.to}...`);
-        loadActiveCalls();
-    });
-    
-    socket.on('callAccepted', (data) => {
-        addLog(`✅ Call accepted (${data.callSid})`);
-        loadPendingCalls();
-        loadActiveCalls();
-    });
-    
-    socket.on('callRejected', (data) => {
-        addLog(`❌ Call rejected (${data.callSid})`);
-        loadPendingCalls();
-    });
-    
-    socket.on('callEnded', (data) => {
-        addLog(`📴 Call ended (${data.callSid})`);
-        loadActiveCalls();
-    });
-    
-    socket.on('callStatusUpdate', (data) => {
-        if (['answered', 'completed', 'failed'].includes(data.status)) {
-            addLog(`📞 Call ${data.status}: ${data.from} → ${data.to}`);
-            loadActiveCalls();
-            loadPendingCalls();
-        }
-    });
-    
-    // Request notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
+    if (authToken && currentUser) {
+        showMainApp();
+    } else {
+        showAuthSection();
     }
 }
 
-// Tab Management
-function showTab(tabName) {
-    // Hide all tabs
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.classList.remove('active');
-    });
-    
-    // Show selected tab
-    document.getElementById(`${tabName}-tab`).classList.add('active');
-    document.querySelector(`[onclick="showTab('${tabName}')"]`).classList.add('active');
-    
-    // Load tab-specific data
-    switch(tabName) {
-        case 'contacts':
-            loadContacts();
-            break;
-        case 'users':
-            loadUsers();
-            break;
-        case 'history':
-            loadCallHistory();
-            break;
-    }
+function showAuthSection() {
+    document.getElementById('authSection').classList.remove('hidden');
+    document.getElementById('mainApp').classList.add('hidden');
 }
 
-// Load initial data
-async function loadInitialData() {
+function showMainApp() {
+    document.getElementById('authSection').classList.add('hidden');
+    document.getElementById('mainApp').classList.remove('hidden');
+    
+    // Update user info
+    document.getElementById('userName').textContent = currentUser.name;
+    document.getElementById('userEmail').textContent = currentUser.email;
+    
+    // Initialize app
+    loadInitialData();
+    setupEventListeners();
+    initializeWebSocket();
+}
+
+function showAuthTab(tab, event) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+    
+    if (event && event.target) {
+        event.target.classList.add('active');
+    } else {
+        // Fallback: find the button that was clicked
+        const button = document.querySelector(`[onclick*="showAuthTab('${tab}')"]`);
+        if (button) button.classList.add('active');
+    }
+    
+    document.getElementById(tab + 'Form').classList.add('active');
+    clearAuthMessage();
+}
+
+async function login(event) {
+    event.preventDefault();
+    
+    const emailOrUsername = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    
     try {
-        await Promise.all([
-            loadUsers(),
-            loadActiveCalls(),
-            loadPendingCalls()
-        ]);
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ emailOrUsername, password })
+        });
         
-        if (users.length > 0) {
-            currentUser = users[0];
-            await loadContacts(currentUser.id);
+        const data = await response.json();
+        
+        if (data.success) {
+            authToken = data.token;
+            currentUser = data.user;
+            
+            localStorage.setItem('authToken', authToken);
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            
+            showAuthMessage('Login successful!', 'success');
+            setTimeout(showMainApp, 1000);
+        } else {
+            showAuthMessage(data.error, 'error');
         }
-        
-        populateUserSelects();
-        updateQuickContacts();
-        
-        // Initialize WebSocket instead of polling
-        initializeWebSocket();
-        
     } catch (error) {
-        console.error('Error loading initial data:', error);
-        showToast('Failed to load initial data', 'error');
+        console.error('Login error:', error);
+        showAuthMessage('Login failed: ' + error.message, 'error');
     }
 }
 
-// API Helper Functions
+async function register(event) {
+    event.preventDefault();
+    
+    const userData = {
+        name: document.getElementById('registerName').value,
+        username: document.getElementById('registerUsername').value,
+        email: document.getElementById('registerEmail').value,
+        phoneNumber: document.getElementById('registerPhone').value,
+        password: document.getElementById('registerPassword').value
+    };
+    
+    try {
+        const response = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userData)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            authToken = data.token;
+            currentUser = data.user;
+            
+            localStorage.setItem('authToken', authToken);
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            
+            showAuthMessage('Registration successful!', 'success');
+            setTimeout(showMainApp, 1000);
+        } else {
+            showAuthMessage(data.error, 'error');
+        }
+    } catch (error) {
+        console.error('Registration error:', error);
+        showAuthMessage('Registration failed: ' + error.message, 'error');
+    }
+}
+
+function logout() {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('currentUser');
+    authToken = null;
+    currentUser = null;
+    
+    if (socket) {
+        socket.disconnect();
+    }
+    
+    showAuthSection();
+    showAuthMessage('Logged out successfully', 'success');
+}
+
+function showAuthMessage(message, type) {
+    const messageDiv = document.getElementById('authMessage');
+    messageDiv.innerHTML = `<div class="${type}-message">${message}</div>`;
+}
+
+function clearAuthMessage() {
+    document.getElementById('authMessage').innerHTML = '';
+}
+
+// ===================================
+// API HELPER WITH AUTHENTICATION
+// ===================================
+
 async function apiCall(url, options = {}) {
     try {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        
+        if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+        }
+        
         const response = await fetch(url, {
-            headers: {
-                'Content-Type': 'application/json',
-                ...options.headers
-            },
+            headers,
             ...options
         });
+        
+        if (response.status === 401) {
+            // Token expired or invalid
+            logout();
+            throw new Error('Authentication expired. Please login again.');
+        }
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -156,247 +193,12 @@ async function apiCall(url, options = {}) {
     }
 }
 
-// User Management
-async function loadUsers() {
-    try {
-        const response = await apiCall('/api/users');
-        users = response.users || [];
-        updateUsersList();
-        return users;
-    } catch (error) {
-        console.error('Error loading users:', error);
-        return [];
-    }
-}
+// ===================================
+// CALL MANAGEMENT (AUTHENTICATED)
+// ===================================
 
-async function addUser(event) {
-    event.preventDefault();
-    
-    const userData = {
-        name: document.getElementById('newUserName').value,
-        email: document.getElementById('newUserEmail').value,
-        phone: document.getElementById('newUserPhone').value
-    };
-    
-    try {
-        const response = await apiCall('/api/users', {
-            method: 'POST',
-            body: JSON.stringify(userData)
-        });
-        
-        if (response.success) {
-            await loadUsers();
-            populateUserSelects();
-            hideAddUserForm();
-            showToast('User added successfully', 'success');
-        }
-    } catch (error) {
-        console.error('Error adding user:', error);
-        showToast('Failed to add user', 'error');
-    }
-}
-
-function updateUsersList() {
-    const usersList = document.getElementById('usersList');
-    
-    if (users.length === 0) {
-        usersList.innerHTML = '<div class="empty-state"><h3>No users found</h3><p>Add a user to get started</p></div>';
-        return;
-    }
-    
-    usersList.innerHTML = users.map(user => `
-        <div class="user-item">
-            <div class="item-info">
-                <div class="item-title">${user.name}</div>
-                <div class="item-subtitle">${user.email || 'No email'}</div>
-                <div class="item-subtitle">${user.phone || 'No phone'}</div>
-            </div>
-            <div class="item-actions">
-                <button onclick="viewUserDetails(${user.id})">📊 Stats</button>
-                <button onclick="loadContacts(${user.id})">👥 Contacts</button>
-                <button class="danger" onclick="deleteUser(${user.id})">🗑️ Delete</button>
-            </div>
-        </div>
-    `).join('');
-}
-
-async function deleteUser(userId) {
-    if (!confirm('Are you sure you want to delete this user?')) return;
-    
-    try {
-        const response = await apiCall(`/api/users/${userId}`, {
-            method: 'DELETE'
-        });
-        
-        if (response.success) {
-            await loadUsers();
-            populateUserSelects();
-            showToast('User deleted successfully', 'success');
-        }
-    } catch (error) {
-        console.error('Error deleting user:', error);
-        showToast('Failed to delete user', 'error');
-    }
-}
-
-// Contact Management
-async function loadContacts(userId = null) {
-    if (!userId && users.length > 0) {
-        userId = users[0].id;
-    }
-    
-    if (!userId) return;
-    
-    try {
-        const response = await apiCall(`/api/users/${userId}/contacts`);
-        contacts = response.contacts || [];
-        updateContactsList();
-        updateQuickContacts();
-        return contacts;
-    } catch (error) {
-        console.error('Error loading contacts:', error);
-        return [];
-    }
-}
-
-async function searchContacts() {
-    const userId = document.getElementById('contactUserSelect').value;
-    const searchTerm = document.getElementById('contactSearch').value;
-    
-    if (!userId) {
-        showToast('Please select a user first', 'warning');
-        return;
-    }
-    
-    try {
-        let url = `/api/users/${userId}/contacts`;
-        if (searchTerm) {
-            url += `/search?q=${encodeURIComponent(searchTerm)}`;
-        }
-        
-        const response = await apiCall(url);
-        contacts = response.contacts || [];
-        updateContactsList();
-    } catch (error) {
-        console.error('Error searching contacts:', error);
-        showToast('Failed to search contacts', 'error');
-    }
-}
-
-async function addContact(event) {
-    event.preventDefault();
-    
-    const contactData = {
-        user_id: parseInt(document.getElementById('newContactUser').value),
-        name: document.getElementById('newContactName').value,
-        phone: document.getElementById('newContactPhone').value,
-        email: document.getElementById('newContactEmail').value,
-        notes: document.getElementById('newContactNotes').value,
-        is_favorite: document.getElementById('newContactFavorite').checked
-    };
-    
-    try {
-        const response = await apiCall('/api/contacts', {
-            method: 'POST',
-            body: JSON.stringify(contactData)
-        });
-        
-        if (response.success) {
-            await loadContacts(contactData.user_id);
-            hideAddContactForm();
-            showToast('Contact added successfully', 'success');
-        }
-    } catch (error) {
-        console.error('Error adding contact:', error);
-        showToast('Failed to add contact', 'error');
-    }
-}
-
-async function toggleFavorite(contactId) {
-    try {
-        const response = await apiCall(`/api/contacts/${contactId}/toggle-favorite`, {
-            method: 'POST'
-        });
-        
-        if (response.success) {
-            await loadContacts();
-            updateQuickContacts();
-            showToast('Favorite status updated', 'success');
-        }
-    } catch (error) {
-        console.error('Error toggling favorite:', error);
-        showToast('Failed to update favorite', 'error');
-    }
-}
-
-async function deleteContact(contactId) {
-    if (!confirm('Are you sure you want to delete this contact?')) return;
-    
-    try {
-        const response = await apiCall(`/api/contacts/${contactId}`, {
-            method: 'DELETE'
-        });
-        
-        if (response.success) {
-            await loadContacts();
-            updateQuickContacts();
-            showToast('Contact deleted successfully', 'success');
-        }
-    } catch (error) {
-        console.error('Error deleting contact:', error);
-        showToast('Failed to delete contact', 'error');
-    }
-}
-
-function updateContactsList() {
-    const contactsList = document.getElementById('contactsList');
-    
-    if (contacts.length === 0) {
-        contactsList.innerHTML = '<div class="empty-state"><h3>No contacts found</h3><p>Add a contact to get started</p></div>';
-        return;
-    }
-    
-    contactsList.innerHTML = contacts.map(contact => `
-        <div class="contact-item">
-            <div class="item-info">
-                <div class="item-title">
-                    ${contact.name}
-                    <span class="favorite-star ${contact.is_favorite ? '' : 'inactive'}" 
-                          onclick="toggleFavorite(${contact.id})">⭐</span>
-                </div>
-                <div class="item-subtitle">${contact.formatted_phone || contact.phone}</div>
-                <div class="item-subtitle">${contact.email || ''}</div>
-                ${contact.notes ? `<div class="item-subtitle">${contact.notes}</div>` : ''}
-            </div>
-            <div class="item-actions">
-                <button onclick="callContact('${contact.phone}', ${contact.user_id})">📞 Call</button>
-                <button onclick="viewContactHistory(${contact.id})">📋 History</button>
-                <button class="danger" onclick="deleteContact(${contact.id})">🗑️ Delete</button>
-            </div>
-        </div>
-    `).join('');
-}
-
-function updateQuickContacts() {
-    const quickContacts = document.getElementById('quickContacts');
-    const favoriteContacts = contacts.filter(contact => contact.is_favorite);
-    
-    if (favoriteContacts.length === 0) {
-        quickContacts.innerHTML = '<p>No favorite contacts</p>';
-        return;
-    }
-    
-    quickContacts.innerHTML = favoriteContacts.map(contact => `
-        <div class="quick-contact favorite" onclick="callContact('${contact.phone}', ${contact.user_id})">
-            ${contact.name} (${contact.phone})
-        </div>
-    `).join('');
-}
-
-// Call Management
 async function makeCall() {
     const phoneNumber = document.getElementById('phoneNumber').value;
-    const userId = document.getElementById('userSelect').value;
     
     if (!phoneNumber) {
         showToast('Please enter a phone number', 'warning');
@@ -404,14 +206,9 @@ async function makeCall() {
     }
     
     try {
-        const callData = { to: phoneNumber };
-        if (userId) {
-            callData.user_id = parseInt(userId);
-        }
-        
         const response = await apiCall('/api/calls/make', {
             method: 'POST',
-            body: JSON.stringify(callData)
+            body: JSON.stringify({ to: phoneNumber })
         });
         
         if (response.success) {
@@ -423,16 +220,8 @@ async function makeCall() {
         }
     } catch (error) {
         console.error('Error making call:', error);
-        showToast('Error making call', 'error');
+        showToast('Error making call: ' + error.message, 'error');
     }
-}
-
-async function callContact(phoneNumber, userId) {
-    document.getElementById('phoneNumber').value = phoneNumber;
-    if (userId) {
-        document.getElementById('userSelect').value = userId;
-    }
-    await makeCall();
 }
 
 async function hangupCall(callSid) {
@@ -452,17 +241,9 @@ async function hangupCall(callSid) {
 }
 
 async function acceptCall(callSid) {
-    const userId = document.getElementById('userSelect').value;
-    
     try {
-        const requestBody = {};
-        if (userId) {
-            requestBody.user_id = parseInt(userId);
-        }
-        
         const response = await apiCall(`/api/calls/accept/${callSid}`, {
-            method: 'POST',
-            body: JSON.stringify(requestBody)
+            method: 'POST'
         });
         
         if (response.success) {
@@ -477,17 +258,9 @@ async function acceptCall(callSid) {
 }
 
 async function rejectCall(callSid) {
-    const userId = document.getElementById('userSelect').value;
-    
     try {
-        const requestBody = {};
-        if (userId) {
-            requestBody.user_id = parseInt(userId);
-        }
-        
         const response = await apiCall(`/api/calls/reject/${callSid}`, {
-            method: 'POST',
-            body: JSON.stringify(requestBody)
+            method: 'POST'
         });
         
         if (response.success) {
@@ -497,6 +270,25 @@ async function rejectCall(callSid) {
     } catch (error) {
         console.error('Error rejecting call:', error);
         showToast('Error rejecting call', 'error');
+    }
+}
+
+// ===================================
+// LOAD DATA FUNCTIONS
+// ===================================
+
+async function loadInitialData() {
+    try {
+        await Promise.all([
+            loadActiveCalls(),
+            loadPendingCalls(),
+            loadContacts()
+        ]);
+        
+        updateQuickContacts();
+    } catch (error) {
+        console.error('Error loading initial data:', error);
+        showToast('Failed to load initial data', 'error');
     }
 }
 
@@ -523,6 +315,131 @@ async function loadPendingCalls() {
         return [];
     }
 }
+
+async function loadContacts() {
+    try {
+        const response = await apiCall(`/api/users/${currentUser.id}/contacts`);
+        contacts = response.contacts || [];
+        updateContactsList();
+        updateQuickContacts();
+        return contacts;
+    } catch (error) {
+        console.error('Error loading contacts:', error);
+        return [];
+    }
+}
+
+async function loadCallHistory() {
+    const direction = document.getElementById('historyDirection').value;
+    
+    try {
+        let url = `/api/users/${currentUser.id}/call-history`;
+        if (direction) {
+            url += `?direction=${direction}`;
+        }
+        
+        const response = await apiCall(url);
+        callHistory = response.callHistory || [];
+        updateCallHistoryList();
+    } catch (error) {
+        console.error('Error loading call history:', error);
+        showToast('Failed to load call history', 'error');
+    }
+}
+
+// ===================================
+// CONTACT MANAGEMENT
+// ===================================
+
+async function addContact(event) {
+    event.preventDefault();
+    
+    const contactData = {
+        user_id: currentUser.id,
+        name: document.getElementById('newContactName').value,
+        phone: document.getElementById('newContactPhone').value,
+        email: document.getElementById('newContactEmail').value,
+        notes: document.getElementById('newContactNotes').value,
+        is_favorite: document.getElementById('newContactFavorite').checked
+    };
+    
+    try {
+        const response = await apiCall('/api/contacts', {
+            method: 'POST',
+            body: JSON.stringify(contactData)
+        });
+        
+        if (response.success) {
+            await loadContacts();
+            hideAddContactForm();
+            showToast('Contact added successfully', 'success');
+        }
+    } catch (error) {
+        console.error('Error adding contact:', error);
+        showToast('Failed to add contact: ' + error.message, 'error');
+    }
+}
+
+async function toggleFavorite(contactId) {
+    try {
+        const response = await apiCall(`/api/contacts/${contactId}/toggle-favorite`, {
+            method: 'POST'
+        });
+        
+        if (response.success) {
+            await loadContacts();
+            showToast('Favorite status updated', 'success');
+        }
+    } catch (error) {
+        console.error('Error toggling favorite:', error);
+        showToast('Failed to update favorite', 'error');
+    }
+}
+
+async function deleteContact(contactId) {
+    if (!confirm('Are you sure you want to delete this contact?')) return;
+    
+    try {
+        const response = await apiCall(`/api/contacts/${contactId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.success) {
+            await loadContacts();
+            showToast('Contact deleted successfully', 'success');
+        }
+    } catch (error) {
+        console.error('Error deleting contact:', error);
+        showToast('Failed to delete contact', 'error');
+    }
+}
+
+async function searchContacts() {
+    const searchTerm = document.getElementById('contactSearch').value;
+    
+    try {
+        let url = `/api/users/${currentUser.id}/contacts`;
+        if (searchTerm) {
+            url += `/search?q=${encodeURIComponent(searchTerm)}`;
+        }
+        
+        const response = await apiCall(url);
+        contacts = response.contacts || [];
+        updateContactsList();
+    } catch (error) {
+        console.error('Error searching contacts:', error);
+        showToast('Failed to search contacts', 'error');
+    }
+}
+
+async function callContact(phoneNumber) {
+    document.getElementById('phoneNumber').value = phoneNumber;
+    await makeCall();
+}
+
+// ===================================
+// UI UPDATE FUNCTIONS
+// ===================================
 
 function updateCallsList() {
     const callsList = document.getElementById('callsList');
@@ -577,31 +494,48 @@ function updatePendingCallsList() {
     `).join('');
 }
 
-// Call History
-async function loadCallHistory() {
-    const userId = document.getElementById('historyUserSelect').value;
-    const direction = document.getElementById('historyDirection').value;
+function updateContactsList() {
+    const contactsList = document.getElementById('contactsList');
     
-    try {
-        let url = '/api/users';
-        if (userId) {
-            url += `/${userId}/call-history`;
-            const params = new URLSearchParams();
-            if (direction) params.append('direction', direction);
-            if (params.toString()) url += '?' + params.toString();
-        } else {
-            // Load call history for all users (you'd need to implement this endpoint)
-            showToast('Please select a user to view call history', 'warning');
-            return;
-        }
-        
-        const response = await apiCall(url);
-        callHistory = response.callHistory || [];
-        updateCallHistoryList();
-    } catch (error) {
-        console.error('Error loading call history:', error);
-        showToast('Failed to load call history', 'error');
+    if (contacts.length === 0) {
+        contactsList.innerHTML = '<div class="empty-state"><h3>No contacts found</h3><p>Add a contact to get started</p></div>';
+        return;
     }
+    
+    contactsList.innerHTML = contacts.map(contact => `
+        <div class="contact-item">
+            <div class="item-info">
+                <div class="item-title">
+                    ${contact.name}
+                    <span class="favorite-star ${contact.is_favorite ? '' : 'inactive'}" 
+                            onclick="toggleFavorite('${contact.id}')">⭐</span>
+                </div>
+                <div class="item-subtitle">${contact.formatted_phone || contact.phone}</div>
+                <div class="item-subtitle">${contact.email || ''}</div>
+                ${contact.notes ? `<div class="item-subtitle">${contact.notes}</div>` : ''}
+            </div>
+            <div class="item-actions">
+                <button onclick="callContact('${contact.phone}')">📞 Call</button>
+                <button class="danger" onclick="deleteContact('${contact.id}')">🗑️ Delete</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateQuickContacts() {
+    const quickContacts = document.getElementById('quickContacts');
+    const favoriteContacts = contacts.filter(contact => contact.is_favorite);
+    
+    if (favoriteContacts.length === 0) {
+        quickContacts.innerHTML = '<p>No favorite contacts</p>';
+        return;
+    }
+    
+    quickContacts.innerHTML = favoriteContacts.map(contact => `
+        <div class="quick-contact favorite" onclick="callContact('${contact.phone}')">
+            ${contact.name} (${contact.phone})
+        </div>
+    `).join('');
 }
 
 function updateCallHistoryList() {
@@ -633,49 +567,83 @@ function updateCallHistoryList() {
     `).join('');
 }
 
-// UI Helper Functions
-function populateUserSelects() {
-    const selects = [
-        'userSelect',
-        'contactUserSelect',
-        'newContactUser',
-        'historyUserSelect'
-    ];
+// ===================================
+// WEBSOCKET & OTHER FUNCTIONS
+// ===================================
+
+function initializeWebSocket() {
+    socket = io();
     
-    selects.forEach(selectId => {
-        const select = document.getElementById(selectId);
-        if (select) {
-            const currentValue = select.value;
-            select.innerHTML = select.id === 'historyUserSelect' 
-                ? '<option value="">All Users</option>' 
-                : '<option value="">Select User</option>';
-            
-            users.forEach(user => {
-                const option = document.createElement('option');
-                option.value = user.id;
-                option.textContent = user.name;
-                select.appendChild(option);
+    socket.on('connect', () => {
+        console.log('📡 Connected to server');
+        addLog('📡 Connected to real-time updates');
+        document.getElementById('connectionStatus').textContent = '📡 Connected';
+        document.getElementById('connectionStatus').className = 'connection-status connected';
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('📡 Disconnected from server');
+        addLog('📡 Disconnected from real-time updates');
+        document.getElementById('connectionStatus').textContent = '📡 Disconnected';
+        document.getElementById('connectionStatus').className = 'connection-status disconnected';
+    });
+    
+    // Listen for call events
+    socket.on('incomingCall', (data) => {
+        addLog(`📞 Incoming call from ${data.contact ? data.contact.name : data.from}`);
+        loadPendingCalls();
+        
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('Incoming Call', {
+                body: `Call from ${data.contact ? data.contact.name : data.from}`,
+                icon: '📞'
             });
-            
-            if (currentValue) {
-                select.value = currentValue;
-            }
         }
     });
+    
+    socket.on('callInitiated', (data) => {
+        if (data.user_id === currentUser.id) {
+            addLog(`📞 Calling ${data.contact ? data.contact.name : data.to}...`);
+            loadActiveCalls();
+        }
+    });
+    
+    socket.on('callEnded', (data) => {
+        if (data.user_id === currentUser.id) {
+            addLog(`📴 Call ended (${data.callSid})`);
+            loadActiveCalls();
+        }
+    });
+
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
 }
 
-// Modal Functions
-function showAddUserForm() {
-    document.getElementById('addUserForm').style.display = 'flex';
-}
+// ===================================
+// UTILITY FUNCTIONS
+// ===================================
 
-function hideAddUserForm() {
-    document.getElementById('addUserForm').style.display = 'none';
-    document.getElementById('addUserForm').querySelector('form').reset();
+function showTab(tabName) {
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+    
+    document.getElementById(`${tabName}-tab`).classList.add('active');
+    document.querySelector(`[onclick="showTab('${tabName}')"]`).classList.add('active');
+    
+    if (tabName === 'contacts') {
+        loadContacts();
+    } else if (tabName === 'history') {
+        loadCallHistory();
+    }
 }
 
 function showAddContactForm() {
-    populateUserSelects();
     document.getElementById('addContactForm').style.display = 'flex';
 }
 
@@ -684,9 +652,7 @@ function hideAddContactForm() {
     document.getElementById('addContactForm').querySelector('form').reset();
 }
 
-// Event Listeners
 function setupEventListeners() {
-    // Close modals when clicking outside
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
@@ -695,22 +661,13 @@ function setupEventListeners() {
         });
     });
     
-    // Search contacts on enter
     document.getElementById('contactSearch').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             searchContacts();
         }
     });
-    
-    // Auto-load contacts when user selection changes
-    document.getElementById('contactUserSelect').addEventListener('change', (e) => {
-        if (e.target.value) {
-            loadContacts(e.target.value);
-        }
-    });
 }
 
-// Utility Functions
 function addLog(message) {
     const logsList = document.getElementById('logsList');
     const logItem = document.createElement('div');
@@ -718,7 +675,6 @@ function addLog(message) {
     logItem.textContent = `${new Date().toLocaleTimeString()} - ${message}`;
     logsList.insertBefore(logItem, logsList.firstChild);
     
-    // Keep only last 50 logs
     while (logsList.children.length > 50) {
         logsList.removeChild(logsList.lastChild);
     }
@@ -735,41 +691,3 @@ function showToast(message, type = 'info') {
     }, 3000);
 }
 
-// View functions
-async function viewUserDetails(userId) {
-    try {
-        const response = await apiCall(`/api/users/${userId}/call-stats`);
-        const stats = response.stats;
-        
-        alert(`User Statistics:
-Total Calls: ${stats.totalCalls}
-Inbound: ${stats.inboundCalls}
-Outbound: ${stats.outboundCalls}
-Total Duration: ${Math.floor(stats.totalDuration / 60)} minutes
-Average Duration: ${stats.averageDuration} seconds`);
-    } catch (error) {
-        console.error('Error loading user stats:', error);
-        showToast('Failed to load user statistics', 'error');
-    }
-}
-
-async function viewContactHistory(contactId) {
-    try {
-        const response = await apiCall(`/api/contacts/${contactId}/call-history`);
-        const history = response.callHistory || [];
-        
-        if (history.length === 0) {
-            showToast('No call history for this contact', 'info');
-            return;
-        }
-        
-        const historyText = history.map(call => 
-            `${call.direction}: ${call.status} (${new Date(call.created_at).toLocaleDateString()})`
-        ).join('\n');
-        
-        alert(`Contact Call History:\n\n${historyText}`);
-    } catch (error) {
-        console.error('Error loading contact history:', error);
-        showToast('Failed to load contact history', 'error');
-    }
-}

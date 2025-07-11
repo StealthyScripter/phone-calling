@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticateToken } = require('../middleware/auth');
 const { 
     makeCall, 
     hangupCall, 
@@ -11,22 +12,29 @@ const {
 } = require('../controllers/callController');
 
 /**
- * Outbound call routes
+ * ===================================
+ * CALL ROUTES
+ * All routes require authentication
+ * ===================================
  */
-router.post('/make', makeCall);
-router.post('/hangup/:callSid', hangupCall);
 
 /**
- * Incoming call routes
+ * Outbound call routes - PROTECTED
  */
-router.post('/accept/:callSid', acceptIncomingCall);
-router.post('/reject/:callSid', rejectIncomingCall);
-router.get('/pending', getPendingCalls);
+router.post('/make', authenticateToken, makeCall);
+router.post('/hangup/:callSid', authenticateToken, hangupCall);
 
 /**
- * Call monitoring routes
+ * Incoming call routes - PROTECTED
  */
-router.get('/active', getActiveCalls);
-router.get('/:callSid', getCallDetails);
+router.post('/accept/:callSid', authenticateToken, acceptIncomingCall);
+router.post('/reject/:callSid', authenticateToken, rejectIncomingCall);
+router.get('/pending', authenticateToken, getPendingCalls);
+
+/**
+ * Call monitoring routes - PROTECTED
+ */
+router.get('/active', authenticateToken, getActiveCalls);
+router.get('/:callSid', authenticateToken, getCallDetails);
 
 module.exports = router;
