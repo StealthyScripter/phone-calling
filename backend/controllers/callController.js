@@ -23,7 +23,7 @@ const prisma = new PrismaClient();
  */
 const makeCall = async (req, res) => {
     try {
-        const { to } = req.body;
+        const { to, contact_name } = req.body;
         const user_id = req.user.id; // Get user ID from authenticated token
         
         // Input validation
@@ -35,7 +35,7 @@ const makeCall = async (req, res) => {
             });
         }
 
-        // Validate user exists in database
+        // Validate user exists in database (using UUID)
         const user = await prisma.user.findUnique({
             where: { id: String(user_id) }
         });
@@ -71,7 +71,8 @@ const makeCall = async (req, res) => {
             sid: call.sid,
             direction: 'outbound',
             user_id: user_id,
-            contact_id: contact ? contact.id : null
+            contact_id: contact ? contact.id : null,
+            contact_name: contact_name || contact?.name || null
         });
 
         // Add call to database with authenticated user
@@ -94,7 +95,7 @@ const makeCall = async (req, res) => {
             from: process.env.TWILIO_PHONE_NUMBER,
             user_id,
             user_name: user.name,
-            contact_name: contact ? contact.name : null
+            contact_name: contact_name || contact?.name || null
         });
 
         // Emit real-time event
@@ -107,6 +108,7 @@ const makeCall = async (req, res) => {
                     id: contact.id,
                     name: contact.name
                 } : null,
+                contact_name: contact_name || contact?.name || null,
                 user_id: user_id,
                 user_name: user.name,
                 status: 'initiated'
@@ -122,6 +124,7 @@ const makeCall = async (req, res) => {
                 id: contact.id,
                 name: contact.name
             } : null,
+            contact_name: contact_name || contact?.name || null,
             user: {
                 id: user.id,
                 name: user.name
@@ -149,17 +152,51 @@ const hangupCall = async (req, res) => {
         const { callSid } = req.params;
         const user_id = req.user.id;
 
-        // Validate call exists and belongs to user
-        const callInfo = await callManager.getCall(callSid);
-        if (!callInfo) {
-            return res.status(404).json({ 
-                error: 'Call not found',
-                success: false 
-            });
+        // Handle temporary SIDs from frontend
+        if (callSid.startsWith('temp_')) {
+            console.log('🟡 Attempting to hangup temporary SID:', callSid);
+            
+            // Look for active calls by this user to find the real SID
+            const userCalls = await callManager.getAllCalls();
+            const userActiveCall = userCalls.find(call => 
+                call.user_id === user_id && 
+                ['initiated', 'ringing', 'in-progress', 'answered'].includes(call.status)
+            );
+            
+            if (userActiveCall && userActiveCall.sid) {
+                console.log('🟢 Found real SID for temp SID:', userActiveCall.sid);
+                return await hangupRealCall(userActiveCall.sid, user_id, res);
+            } else {
+                // No active call found - might already be ended
+                console.log('🟡 No active call found for user, considering call already ended');
+                return res.json({
+                    success: true,
+                    message: 'Call already ended or not found',
+                    callSid: callSid
+                });
+            }
         }
 
-        // Check if user owns this call
-        if (callInfo.user_id !== user_id) {
+        // Handle real Twilio SIDs
+        return await hangupRealCall(callSid, user_id, res);
+
+    } catch (error) {
+        logError('Call termination', error, { callSid: req.params.callSid, user_id: req.user.id });
+        res.status(500).json({ 
+            error: 'Failed to end call',
+            success: false 
+        });
+    }
+};
+
+/**
+ * Helper function to hangup a real Twilio call
+ */
+const hangupRealCall = async (callSid, user_id, res) => {
+    try {
+        // Validate call exists and belongs to user
+        const callInfo = await callManager.getCall(callSid);
+        if (callInfo && callInfo.user_id !== user_id) {
             return res.status(403).json({
                 error: 'You can only hangup your own calls',
                 success: false
@@ -167,15 +204,23 @@ const hangupCall = async (req, res) => {
         }
 
         // Terminate call via Twilio
-        await twilioClient.calls(callSid).update({
-            status: 'completed'
-        });
+        try {
+            await twilioClient.calls(callSid).update({
+                status: 'completed'
+            });
+            console.log('✅ Twilio call terminated:', callSid);
+        } catch (twilioError) {
+            console.log('⚠️ Twilio call already ended or not found:', callSid);
+            // Continue with cleanup even if Twilio call is already ended
+        }
 
         // Update call status and remove from active calls
-        await callManager.updateCall(callSid, { 
-            status: 'completed',
-            endTime: new Date().toISOString()
-        });
+        if (callInfo) {
+            await callManager.updateCall(callSid, { 
+                status: 'completed',
+                endTime: new Date().toISOString()
+            });
+        }
 
         // Update call history in database
         await prisma.call.updateMany({
@@ -203,18 +248,14 @@ const hangupCall = async (req, res) => {
             });
         }
 
-        res.json({
+        return res.json({
             success: true,
             message: 'Call ended successfully',
             callSid: callSid
         });
 
     } catch (error) {
-        logError('Call termination', error, { callSid: req.params.callSid, user_id: req.user.id });
-        res.status(500).json({ 
-            error: 'Failed to end call',
-            success: false 
-        });
+        throw error; // Re-throw to be caught by parent function
     }
 };
 

@@ -1,10 +1,19 @@
 export interface User {
-  id: number;
-  name: string;
+  id: number | string;
+  name: string; // Required field from backend schema
   email: string;
-  phone?: string;
-  created_at: string;
-  updated_at: string;
+  username?: string;
+  firstName?: string;
+  lastName?: string;
+  phoneNumber?: string;
+  phone?: string; // Legacy field
+  role?: string;
+  isActive?: boolean;
+  lastLogin?: string;
+  created_at?: string;
+  updated_at?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Contact {

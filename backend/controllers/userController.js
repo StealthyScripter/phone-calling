@@ -1,9 +1,12 @@
-const User = require('../models/user.model');
-const { logError } = require('../utils/logger');
+const { PrismaClient } = require('@prisma/client');
+const { logError, logger } = require('../utils/logger');
+
+const prisma = new PrismaClient();
 
 /**
  * ===================================
  * USER MANAGEMENT OPERATIONS
+ * Now using Prisma instead of legacy model
  * ===================================
  */
 
@@ -15,7 +18,7 @@ const { logError } = require('../utils/logger');
  */
 const createUser = async (req, res) => {
     try {
-        const { name, email, phone, avatar_url, preferences } = req.body;
+        const { name, email, phone, avatar_url, preferences, username, firstName, lastName, phoneNumber } = req.body;
         
         // Validation
         if (!name) {
@@ -27,7 +30,9 @@ const createUser = async (req, res) => {
 
         // Check if email already exists
         if (email) {
-            const existingUser = await User.findByEmail(email);
+            const existingUser = await prisma.user.findUnique({
+                where: { email }
+            });
             if (existingUser) {
                 return res.status(409).json({ 
                     error: 'User with this email already exists',
@@ -36,17 +41,51 @@ const createUser = async (req, res) => {
             }
         }
 
-        const user = await User.create({
-            name,
-            email,
-            phone,
-            avatar_url,
-            preferences
+        const user = await prisma.user.create({
+            data: {
+                name,
+                email,
+                phoneNumber: phoneNumber || phone,
+                avatarUrl: avatar_url,
+                preferences: preferences || {},
+                username,
+                firstName,
+                lastName
+            },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                avatarUrl: true,
+                preferences: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                role: true,
+                createdAt: true,
+                updatedAt: true
+            }
         });
+
+        logger.info('👤 User created', { userId: user.id, name, email });
 
         res.status(201).json({
             success: true,
-            user: user.toJSON(),
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phone: user.phoneNumber,
+                avatar_url: user.avatarUrl,
+                preferences: user.preferences,
+                username: user.username,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                created_at: user.createdAt,
+                updated_at: user.updatedAt
+            },
             message: 'User created successfully'
         });
 
@@ -69,7 +108,36 @@ const createUser = async (req, res) => {
 const getUserById = async (req, res) => {
     try {
         const { id } = req.params;
-        const user = await User.findById(parseInt(id));
+        const authenticated_user_id = req.user.id;
+        
+        // Users can only access their own data (unless admin)
+        if (String(id) !== String(authenticated_user_id) && req.user.role !== 'ADMIN') {
+            return res.status(403).json({
+                error: 'You can only access your own profile',
+                success: false
+            });
+        }
+        
+        const user = await prisma.user.findUnique({
+            where: { id: String(id) },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                avatarUrl: true,
+                preferences: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                role: true,
+                createdAt: true,
+                updatedAt: true,
+                _count: {
+                    select: { calls: true, contacts: true }
+                }
+            }
+        });
 
         if (!user) {
             return res.status(404).json({ 
@@ -80,7 +148,22 @@ const getUserById = async (req, res) => {
 
         res.json({
             success: true,
-            user: user.toJSON()
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phone: user.phoneNumber,
+                avatar_url: user.avatarUrl,
+                preferences: user.preferences,
+                username: user.username,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                role: user.role,
+                created_at: user.createdAt,
+                updated_at: user.updatedAt,
+                call_count: user._count.calls,
+                contact_count: user._count.contacts
+            }
         });
 
     } catch (error) {
@@ -93,7 +176,7 @@ const getUserById = async (req, res) => {
 };
 
 /**
- * Get all users
+ * Get all users (ADMIN only)
  * @route GET /api/users
  * @param {Object} req.query - Query parameters
  * @returns {Object} List of users
@@ -103,19 +186,43 @@ const getAllUsers = async (req, res) => {
         const { 
             limit = 100, 
             offset = 0, 
-            orderBy = 'created_at DESC' 
+            orderBy = 'createdAt' 
         } = req.query;
 
-        const users = await User.findAll({
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            orderBy
+        const users = await prisma.user.findMany({
+            take: parseInt(limit),
+            skip: parseInt(offset),
+            orderBy: { [orderBy]: 'desc' },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                username: true,
+                role: true,
+                createdAt: true,
+                _count: {
+                    select: { calls: true, contacts: true }
+                }
+            }
         });
+
+        const formattedUsers = users.map(user => ({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            phone: user.phoneNumber,
+            username: user.username,
+            role: user.role,
+            created_at: user.createdAt,
+            call_count: user._count.calls,
+            contact_count: user._count.contacts
+        }));
 
         res.json({
             success: true,
-            users: users.map(user => user.toJSON()),
-            count: users.length
+            users: formattedUsers,
+            count: formattedUsers.length
         });
 
     } catch (error) {
@@ -138,7 +245,19 @@ const getAllUsers = async (req, res) => {
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const user = await User.findById(parseInt(id));
+        const authenticated_user_id = req.user.id;
+        
+        // Users can only update their own data (unless admin)
+        if (String(id) !== String(authenticated_user_id) && req.user.role !== 'ADMIN') {
+            return res.status(403).json({
+                error: 'You can only update your own profile',
+                success: false
+            });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: String(id) }
+        });
 
         if (!user) {
             return res.status(404).json({ 
@@ -149,7 +268,9 @@ const updateUser = async (req, res) => {
 
         // Check email uniqueness if updating email
         if (req.body.email && req.body.email !== user.email) {
-            const existingUser = await User.findByEmail(req.body.email);
+            const existingUser = await prisma.user.findUnique({
+                where: { email: req.body.email }
+            });
             if (existingUser) {
                 return res.status(409).json({ 
                     error: 'Email already in use by another user',
@@ -158,20 +279,62 @@ const updateUser = async (req, res) => {
             }
         }
 
-        const success = await user.update(req.body);
+        const allowedFields = ['name', 'email', 'phoneNumber', 'avatarUrl', 'preferences', 'firstName', 'lastName'];
+        const updateData = {};
 
-        if (success) {
-            res.json({
-                success: true,
-                user: user.toJSON(),
-                message: 'User updated successfully'
-            });
-        } else {
-            res.status(400).json({ 
+        Object.keys(req.body).forEach(key => {
+            if (allowedFields.includes(key)) {
+                updateData[key] = req.body[key];
+            }
+            // Handle legacy field mappings
+            if (key === 'phone') updateData.phoneNumber = req.body[key];
+            if (key === 'avatar_url') updateData.avatarUrl = req.body[key];
+        });
+
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ 
                 error: 'No valid fields provided for update',
                 success: false 
             });
         }
+
+        const updatedUser = await prisma.user.update({
+            where: { id: String(id) },
+            data: updateData,
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                avatarUrl: true,
+                preferences: true,
+                username: true,
+                firstName: true,
+                lastName: true,
+                role: true,
+                updatedAt: true
+            }
+        });
+
+        logger.info('👤 User updated', { userId: id, updates: updateData });
+
+        res.json({
+            success: true,
+            user: {
+                id: updatedUser.id,
+                name: updatedUser.name,
+                email: updatedUser.email,
+                phone: updatedUser.phoneNumber,
+                avatar_url: updatedUser.avatarUrl,
+                preferences: updatedUser.preferences,
+                username: updatedUser.username,
+                firstName: updatedUser.firstName,
+                lastName: updatedUser.lastName,
+                role: updatedUser.role,
+                updated_at: updatedUser.updatedAt
+            },
+            message: 'User updated successfully'
+        });
 
     } catch (error) {
         logError('Update user', error, { id: req.params.id, body: req.body });
@@ -183,7 +346,7 @@ const updateUser = async (req, res) => {
 };
 
 /**
- * Delete user
+ * Delete user (ADMIN only)
  * @route DELETE /api/users/:id
  * @param {string} req.params.id - User ID
  * @returns {Object} Deletion confirmation
@@ -191,7 +354,10 @@ const updateUser = async (req, res) => {
 const deleteUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const user = await User.findById(parseInt(id));
+        
+        const user = await prisma.user.findUnique({
+            where: { id: String(id) }
+        });
 
         if (!user) {
             return res.status(404).json({ 
@@ -200,19 +366,16 @@ const deleteUser = async (req, res) => {
             });
         }
 
-        const success = await user.delete();
+        await prisma.user.delete({
+            where: { id: String(id) }
+        });
 
-        if (success) {
-            res.json({
-                success: true,
-                message: 'User deleted successfully'
-            });
-        } else {
-            res.status(500).json({ 
-                error: 'Failed to delete user',
-                success: false 
-            });
-        }
+        logger.info('👤 User deleted', { userId: id });
+
+        res.json({
+            success: true,
+            message: 'User deleted successfully'
+        });
 
     } catch (error) {
         logError('Delete user', error, { id: req.params.id });
@@ -239,14 +402,27 @@ const deleteUser = async (req, res) => {
 const getUserCallHistory = async (req, res) => {
     try {
         const { id } = req.params;
+        const authenticated_user_id = req.user.id;
+        
+        // Users can only access their own call history
+        if (String(id) !== String(authenticated_user_id)) {
+            return res.status(403).json({
+                error: 'You can only access your own call history',
+                success: false
+            });
+        }
+
         const { 
             limit = 50, 
             offset = 0, 
             direction = null,
-            orderBy = 'created_at DESC' 
+            orderBy = 'createdAt' 
         } = req.query;
 
-        const user = await User.findById(parseInt(id));
+        const user = await prisma.user.findUnique({
+            where: { id: String(id) }
+        });
+        
         if (!user) {
             return res.status(404).json({ 
                 error: 'User not found',
@@ -254,12 +430,38 @@ const getUserCallHistory = async (req, res) => {
             });
         }
 
-        const callHistory = await user.getCallHistory({
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-            direction,
-            orderBy
+        const where = { userId: String(id) };
+        if (direction) {
+            where.direction = direction;
+        }
+
+        const calls = await prisma.call.findMany({
+            where,
+            include: {
+                contact: {
+                    select: {
+                        name: true
+                    }
+                }
+            },
+            take: parseInt(limit),
+            skip: parseInt(offset),
+            orderBy: { [orderBy]: 'desc' }
         });
+
+        // Transform to match legacy format
+        const callHistory = calls.map(call => ({
+            id: call.id,
+            call_sid: call.callSid,
+            direction: call.direction,
+            phone_number: call.phoneNumber,
+            status: call.status,
+            duration: call.duration,
+            started_at: call.startedAt,
+            ended_at: call.endedAt,
+            created_at: call.createdAt,
+            contact_name: call.contact?.name || null
+        }));
 
         res.json({
             success: true,
@@ -287,9 +489,22 @@ const getUserCallHistory = async (req, res) => {
 const getUserCallStats = async (req, res) => {
     try {
         const { id } = req.params;
+        const authenticated_user_id = req.user.id;
+        
+        // Users can only access their own call stats
+        if (String(id) !== String(authenticated_user_id)) {
+            return res.status(403).json({
+                error: 'You can only access your own call statistics',
+                success: false
+            });
+        }
+
         const { startDate, endDate } = req.query;
 
-        const user = await User.findById(parseInt(id));
+        const user = await prisma.user.findUnique({
+            where: { id: String(id) }
+        });
+        
         if (!user) {
             return res.status(404).json({ 
                 error: 'User not found',
@@ -297,10 +512,32 @@ const getUserCallStats = async (req, res) => {
             });
         }
 
-        const stats = await user.getCallStats({
-            startDate,
-            endDate
-        });
+        const where = { userId: String(id) };
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt.gte = new Date(startDate);
+            if (endDate) where.createdAt.lte = new Date(endDate);
+        }
+
+        const [totalCalls, inboundCalls, outboundCalls, durationSum] = await Promise.all([
+            prisma.call.count({ where }),
+            prisma.call.count({ where: { ...where, direction: 'inbound' } }),
+            prisma.call.count({ where: { ...where, direction: 'outbound' } }),
+            prisma.call.aggregate({
+                where,
+                _sum: { duration: true }
+            })
+        ]);
+
+        const totalDuration = durationSum._sum.duration || 0;
+
+        const stats = {
+            totalCalls,
+            inboundCalls,
+            outboundCalls,
+            totalDuration,
+            averageDuration: totalCalls > 0 ? Math.round(totalDuration / totalCalls) : 0
+        };
 
         res.json({
             success: true,
@@ -318,7 +555,7 @@ const getUserCallStats = async (req, res) => {
 
 /**
  * ===================================
- * USER SEARCH OPERATIONS
+ * USER SEARCH OPERATIONS (ADMIN only)
  * ===================================
  */
 
@@ -331,7 +568,18 @@ const getUserCallStats = async (req, res) => {
 const findUserByEmail = async (req, res) => {
     try {
         const { email } = req.params;
-        const user = await User.findByEmail(email);
+        const user = await prisma.user.findUnique({
+            where: { email },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                username: true,
+                role: true,
+                createdAt: true
+            }
+        });
 
         if (!user) {
             return res.status(404).json({ 
@@ -342,7 +590,15 @@ const findUserByEmail = async (req, res) => {
 
         res.json({
             success: true,
-            user: user.toJSON()
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phone: user.phoneNumber,
+                username: user.username,
+                role: user.role,
+                created_at: user.createdAt
+            }
         });
 
     } catch (error) {
@@ -363,7 +619,18 @@ const findUserByEmail = async (req, res) => {
 const findUserByPhone = async (req, res) => {
     try {
         const { phone } = req.params;
-        const user = await User.findByPhone(phone);
+        const user = await prisma.user.findFirst({
+            where: { phoneNumber: phone },
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                phoneNumber: true,
+                username: true,
+                role: true,
+                createdAt: true
+            }
+        });
 
         if (!user) {
             return res.status(404).json({ 
@@ -374,7 +641,15 @@ const findUserByPhone = async (req, res) => {
 
         res.json({
             success: true,
-            user: user.toJSON()
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                phone: user.phoneNumber,
+                username: user.username,
+                role: user.role,
+                created_at: user.createdAt
+            }
         });
 
     } catch (error) {

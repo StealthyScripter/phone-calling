@@ -16,6 +16,7 @@ import { Avatar } from '../components/Avatar';
 import { PhoneIcon, PlusIcon, StarIcon, BatteryIcon } from '../components/Icons';
 import { Contact } from '../types';
 import { ApiService } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ContactsScreenProps {
   navigation: any;
@@ -27,21 +28,33 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(true);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    loadContacts();
-  }, []);
+    if (user) {
+      loadContacts();
+    } else {
+      setContacts([]);
+      setLoading(false);
+    }
+  }, [user]);
 
   const loadContacts = async () => {
+    if (!user) {
+      setContacts([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      // Using userId 1 as default - in real app, get from auth context
-      const contactsData = await ApiService.getContacts(1);
+      console.log('📞 Loading contacts for authenticated user:', user.id);
+      const contactsData = await ApiService.getCurrentUserContacts();
       // Ensure contactsData is always an array
       setContacts(Array.isArray(contactsData) ? contactsData : []);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to load contacts');
+    } catch (error: any) {
       console.error('Load contacts error:', error);
+      Alert.alert('Error', error.message || 'Failed to load contacts');
       setContacts([]); // Set empty array on error
     } finally {
       setLoading(false);
@@ -49,30 +62,47 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
   };
 
   const handleCall = async (phone: string, contactName: string) => {
+    if (!user) {
+      Alert.alert('Error', 'Please log in to make calls');
+      return;
+    }
+
     try {
-      // Call the API service to initiate the call on the backend
-      await ApiService.makeCall(phone);
+      console.log('📞 Making call to contact:', phone, contactName);
+      // Use the authenticated API service method
+      await ApiService.makeCallForCurrentUser(phone, contactName);
       // Also trigger the app-level call handling for UI state management
       onMakeCall(phone, contactName);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to make call');
+    } catch (error: any) {
       console.error('Call error:', error);
+      Alert.alert('Error', error.message || 'Failed to make call');
     }
   };
 
   const handleToggleFavorite = async (contact: Contact) => {
     try {
-      await ApiService.toggleFavorite(contact.id);
-      setContacts(prev => 
-        prev.map(c => 
-          c.id === contact.id 
-            ? { ...c, is_favorite: !c.is_favorite }
-            : c
-        )
-      );
+      const updatedContact = await ApiService.toggleFavorite(contact.id);
+      if (updatedContact) {
+        setContacts(prev => 
+          prev.map(c => 
+            c.id === contact.id 
+              ? { ...c, is_favorite: updatedContact.is_favorite }
+              : c
+          )
+        );
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to update favorite');
     }
+  };
+
+  const handleAddContact = () => {
+    // For now, show an alert since AddContact screen doesn't exist
+    Alert.alert(
+      'Add Contact',
+      'Contact creation feature coming soon!\n\nFor now, you can add contacts through the backend API.',
+      [{ text: 'OK' }]
+    );
   };
 
   const getContactInitials = (name: string) => {
@@ -105,7 +135,17 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
   const renderContact = ({ item }: { item: Contact }) => (
     <TouchableOpacity 
       style={styles.contactCard}
-      onPress={() => navigation.navigate('ContactDetail', { contact: item })}
+      onPress={() => {
+        // For now, just show contact details in an alert since ContactDetail screen doesn't exist
+        Alert.alert(
+          item.name,
+          `Phone: ${item.phone}\nEmail: ${item.email || 'No email'}\nFavorite: ${item.is_favorite ? 'Yes' : 'No'}`,
+          [
+            { text: 'Call', onPress: () => handleCall(item.phone, item.name) },
+            { text: 'Close' }
+          ]
+        );
+      }}
       activeOpacity={0.8}
     >
       <View style={styles.contactInfo}>
@@ -151,6 +191,33 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
     </TouchableOpacity>
   );
 
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      {!user ? (
+        <>
+          <Text style={styles.emptyText}>Sign in required</Text>
+          <Text style={styles.emptySubtext}>Please sign in to view your contacts</Text>
+        </>
+      ) : loading ? (
+        <>
+          <Text style={styles.emptyText}>Loading contacts...</Text>
+          <Text style={styles.emptySubtext}>Please wait</Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.emptyText}>No contacts found</Text>
+          <Text style={styles.emptySubtext}>Add your first contact to get started</Text>
+          <TouchableOpacity 
+            style={styles.addContactButton}
+            onPress={handleAddContact}
+          >
+            <Text style={styles.addContactButtonText}>Add Contact</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  );
+
   return (
     <LinearGradient
       colors={Colors.backgroundGradient}
@@ -162,30 +229,34 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Contacts</Text>
-          <Text style={styles.headerSubtitle}>Global connections</Text>
+          <Text style={styles.headerSubtitle}>
+            {user ? `${filteredContacts.length} contacts` : 'Sign in required'}
+          </Text>
         </View>
 
         {/* Search and Filter */}
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search contacts..."
-            placeholderTextColor={Colors.textSecondary}
-            value={searchText}
-            onChangeText={setSearchText}
-          />
-          
-          <TouchableOpacity 
-            style={[styles.filterButton, showFavoritesOnly && styles.filterActive]}
-            onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}
-          >
-            <StarIcon 
-              size={18} 
-              color={showFavoritesOnly ? Colors.primary : Colors.textPrimary}
-              filled={showFavoritesOnly}
+        {user && (
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search contacts..."
+              placeholderTextColor={Colors.textSecondary}
+              value={searchText}
+              onChangeText={setSearchText}
             />
-          </TouchableOpacity>
-        </View>
+            
+            <TouchableOpacity 
+              style={[styles.filterButton, showFavoritesOnly && styles.filterActive]}
+              onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}
+            >
+              <StarIcon 
+                size={18} 
+                color={showFavoritesOnly ? Colors.primary : Colors.textPrimary}
+                filled={showFavoritesOnly}
+              />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Contacts List */}
         <FlatList
@@ -196,28 +267,24 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
           contentContainerStyle={styles.contactsListContent}
           refreshing={loading}
           onRefresh={loadContacts}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>
-                {loading ? 'Loading contacts...' : 'No contacts found'}
-              </Text>
-            </View>
-          }
+          ListEmptyComponent={renderEmptyState}
           showsVerticalScrollIndicator={false}
         />
 
         {/* Floating Action Button */}
-        <TouchableOpacity 
-          style={styles.floatingButton}
-          onPress={() => navigation.navigate('AddContact')}
-        >
-          <LinearGradient
-            colors={Colors.aiGradient}
-            style={styles.floatingButtonGradient}
+        {user && (
+          <TouchableOpacity 
+            style={styles.floatingButton}
+            onPress={handleAddContact}
           >
-            <PlusIcon size={24} color={Colors.primary} />
-          </LinearGradient>
-        </TouchableOpacity>
+            <LinearGradient
+              colors={Colors.aiGradient}
+              style={styles.floatingButtonGradient}
+            >
+              <PlusIcon size={24} color={Colors.primary} />
+            </LinearGradient>
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
     </LinearGradient>
   );
@@ -230,27 +297,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     paddingHorizontal: 16,
-  },
-  statusBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  statusTime: {
-    color: Colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  batteryContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  batteryText: {
-    color: Colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
   },
   header: {
     paddingVertical: 10,
@@ -390,6 +436,25 @@ const styles = StyleSheet.create({
   emptyText: {
     color: Colors.textSecondary,
     fontSize: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    color: Colors.textTertiary,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  addContactButton: {
+    backgroundColor: Colors.accent,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  addContactButtonText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
   },
   floatingButton: {
     position: 'absolute',
@@ -399,7 +464,10 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     elevation: 8,
-    boxShadow: '0 4px 12px rgba(0, 255, 136, 0.3)',
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   floatingButtonGradient: {
     width: '100%',

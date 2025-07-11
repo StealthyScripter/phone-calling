@@ -40,7 +40,6 @@ const AuthStack = createStackNavigator();
 const PHONE_MAX_WIDTH = 375;
 const { width: screenWidth } = Dimensions.get('window');
 
-// Navigation theme
 const navigationTheme = {
   ...NavigationDarkTheme,
   colors: {
@@ -104,14 +103,25 @@ const AppContent = () => {
 
   // Set auth token when available
   useEffect(() => {
-    if (token) {
+    if (token && user) {
+      console.log('🔑 Setting auth token and user in API service');
       ApiService.setAuthToken(token);
+      ApiService.setCurrentUser(user);
+    } else {
+      console.log('🔑 Clearing auth token and user');
+      ApiService.setAuthToken(null);
+      ApiService.setCurrentUser(null);
     }
-  }, [token]);
+  }, [token, user]);
 
-  //Socket setup with stable dependencies
+  // Socket setup with stable dependencies
   useEffect(() => {
-    if (!user) return; // Don't setup socket if no user
+    if (!user || !token) {
+      console.log('🔌 Not setting up socket - no authenticated user');
+      return;
+    }
+
+    console.log('🔌 Setting up socket for authenticated user:', user.id);
 
     // Create stable handler references
     const handleIncomingCall = async (data: any) => {
@@ -162,7 +172,6 @@ const AppContent = () => {
           };
           console.log('🟢 Updated activeCall with real call_sid:', updatedCall.call_sid);
           
-          // Navigate after state update
           setTimeout(() => {
             if (navigationRef) {
               navigationRef.navigate('ActiveCall', { call: updatedCall });
@@ -188,7 +197,6 @@ const AppContent = () => {
           };
           console.log('🟢 Created new activeCall with call_sid:', newActiveCall.call_sid);
           
-          // Navigate after state update
           setTimeout(() => {
             if (navigationRef) {
               navigationRef.navigate('ActiveCall', { call: newActiveCall });
@@ -213,7 +221,7 @@ const AppContent = () => {
     const handleCallEnded = (data: any) => {
       console.log('🟡 SOCKET EVENT: Call ended received:', data);
       setIsUserEndingCall(prev => {
-        if (!prev) { // Only handle if user didn't initiate
+        if (!prev) {
           setActiveCall(null);
           setIncomingCall(null);
           if (navigationRef) {
@@ -237,7 +245,7 @@ const AppContent = () => {
           setTimeout(() => {
             navigationRef?.navigate('ActiveCall', { call: acceptedCall });
           }, 100);
-          return null; // Clear incoming call
+          return null;
         }
         return prevIncoming;
       });
@@ -258,7 +266,6 @@ const AppContent = () => {
     socketService.on('callAccepted', handleCallAccepted);
     socketService.on('callRejected', handleCallRejected);
 
-    // Cleanup function
     return () => {
       socketService.off('incomingCall', handleIncomingCall);
       socketService.off('callInitiated', handleCallInitiated);
@@ -268,7 +275,7 @@ const AppContent = () => {
       socketService.off('callRejected', handleCallRejected);
       socketService.disconnect();
     };
-  }, [user?.id, navigationRef]);
+  }, [user?.id, token, navigationRef]);
 
   if (isLoading) {
     return (
@@ -280,7 +287,8 @@ const AppContent = () => {
     );
   }
 
-  if (!user) {
+  // Show auth screens if no authenticated user
+  if (!user || !token) {
     return (
       <NavigationContainer theme={navigationTheme}>
         <AuthNavigator />
@@ -312,7 +320,6 @@ const AppContent = () => {
   const handleIncomingCallAccept = async () => {
     if (incomingCall && user) {
       try {
-        // Convert user.id to string if needed
         const userId = typeof user.id === 'number' ? user.id : Number(user.id);
         await ApiService.acceptCall(incomingCall.call_sid, userId);
         
@@ -348,7 +355,10 @@ const AppContent = () => {
   };
 
   const handleOutgoingCall = async (phoneNumber: string, contactName?: string) => {
-    if (!user) return;
+    if (!user) {
+      console.error('No authenticated user for making calls');
+      return;
+    }
     
     const newCall: Call = {
       id: Date.now(),

@@ -52,6 +52,12 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) =>
       return false;
     }
 
+    // Check that we have some kind of name
+    if (!formData.firstName.trim() && !formData.lastName.trim()) {
+      Alert.alert('Error', 'Please provide at least a first name or last name');
+      return false;
+    }
+
     return true;
   };
 
@@ -60,10 +66,17 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) =>
 
     setIsLoading(true);
     try {
+      // Create a combined name for the backend
+      const combinedName = `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim() || 
+                          formData.firstName.trim() || 
+                          formData.lastName.trim() || 
+                          formData.username.trim();
+
       await register(
         formData.email.trim(),
         formData.username.trim(),
         formData.password,
+        combinedName, // Pass the combined name
         formData.firstName.trim() || undefined,
         formData.lastName.trim() || undefined
       );
@@ -122,7 +135,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) =>
 
             <View style={styles.row}>
               <View style={[styles.inputGroup, styles.halfWidth]}>
-                <Text style={styles.label}>First Name</Text>
+                <Text style={styles.label}>First Name *</Text>
                 <TextInput
                   style={styles.input}
                   value={formData.firstName}
@@ -144,13 +157,17 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ navigation }) =>
               </View>
             </View>
 
+            <Text style={styles.helpText}>
+              * At least first name or last name is required
+            </Text>
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Password *</Text>
               <TextInput
                 style={styles.input}
                 value={formData.password}
                 onChangeText={(text) => updateField('password', text)}
-                placeholder="Create a password"
+                placeholder="Create a password (min 6 characters)"
                 placeholderTextColor={Colors.textSecondary}
                 secureTextEntry
               />
@@ -223,6 +240,12 @@ const styles = StyleSheet.create({
     padding: 16,
     color: Colors.textPrimary,
     fontSize: 16,
+  },
+  helpText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: -15,
   },
   registerButton: { marginTop: 16 },
   registerButtonDisabled: { opacity: 0.6 },

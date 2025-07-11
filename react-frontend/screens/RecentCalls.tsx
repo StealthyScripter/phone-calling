@@ -14,6 +14,7 @@ import { Colors } from '../constants/Colors';
 import { PhoneIcon, PhoneCallIcon } from '../components/Icons';
 import { CallHistory } from '../types';
 import { ApiService } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 interface RecentCallsScreenProps {
   navigation: any;
@@ -27,40 +28,26 @@ export const RecentCallsScreen: React.FC<RecentCallsScreenProps> = ({
   const [recentCalls, setRecentCalls] = useState<CallHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
-    // Initialize user - in production, get from auth context
-    initializeUser();
-  }, []);
-
-  const initializeUser = async () => {
-    try {
-      // TODO: Replace with actual auth context
-      // const { user } = useAuth();
-      // setCurrentUserId(user?.id);
-      
-      // For demo, try to get first user or default to 1
-      const userId = 1; // This should come from your auth system
-      setCurrentUserId(userId);
-      
-      if (userId) {
-        await loadRecentCalls(userId);
-      }
-    } catch (error) {
-      console.warn('Failed to initialize user:', error);
-      setError('Authentication required');
+    if (user) {
+      loadRecentCalls();
+    } else {
+      setRecentCalls([]);
+      setError('Please log in to view call history');
     }
-  };
+  }, [user]);
 
-  const loadRecentCalls = async (userId: number) => {
-    if (loading) return; // Prevent multiple simultaneous requests
+  const loadRecentCalls = async () => {
+    if (loading || !user) return;
     
     try {
       setLoading(true);
       setError(null);
       
-      const callsData = await ApiService.getCallHistory(userId);
+      console.log('📞 Loading call history for authenticated user:', user.id);
+      const callsData = await ApiService.getCurrentUserCallHistory();
       
       // Ensure we always get an array
       const calls = Array.isArray(callsData) ? callsData : [];
@@ -91,16 +78,18 @@ export const RecentCallsScreen: React.FC<RecentCallsScreenProps> = ({
     if (!phone?.trim()) return;
     
     try {
-      if (!currentUserId) {
+      if (!user) {
         setError('Please log in to make calls');
         return;
       }
+      
+      console.log('📞 Making call from recent calls:', phone);
       
       // Use the parent's onMakeCall if provided, otherwise use API directly
       if (onMakeCall) {
         onMakeCall(phone, contactName);
       } else {
-        await ApiService.makeCall(phone, currentUserId);
+        await ApiService.makeCallForCurrentUser(phone.trim(), contactName);
       }
       
       console.log(`Initiated call to ${phone}`);
@@ -116,8 +105,8 @@ export const RecentCallsScreen: React.FC<RecentCallsScreenProps> = ({
   };
 
   const handleRefresh = async () => {
-    if (currentUserId) {
-      await loadRecentCalls(currentUserId);
+    if (user) {
+      await loadRecentCalls();
     }
   };
 
@@ -299,19 +288,21 @@ export const RecentCallsScreen: React.FC<RecentCallsScreenProps> = ({
         <>
           <Text style={styles.emptyText}>Unable to load calls</Text>
           <Text style={styles.emptySubtext}>{error}</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={handleRefresh}
-          >
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
+          {user && (
+            <TouchableOpacity 
+              style={styles.retryButton}
+              onPress={handleRefresh}
+            >
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          )}
         </>
       ) : loading ? (
         <>
           <Text style={styles.emptyText}>Loading calls...</Text>
           <Text style={styles.emptySubtext}>Please wait</Text>
         </>
-      ) : !currentUserId ? (
+      ) : !user ? (
         <>
           <Text style={styles.emptyText}>Sign in required</Text>
           <Text style={styles.emptySubtext}>Please sign in to view your call history</Text>
@@ -328,6 +319,7 @@ export const RecentCallsScreen: React.FC<RecentCallsScreenProps> = ({
   const getHeaderSubtitle = (): string => {
     if (error) return 'Unable to load';
     if (loading) return 'Loading...';
+    if (!user) return 'Sign in required';
     if (recentCalls.length === 0) return '';
     if (recentCalls.length === 1) return '1 call';
     return `${recentCalls.length} calls`;

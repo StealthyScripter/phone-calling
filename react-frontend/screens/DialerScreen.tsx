@@ -14,6 +14,7 @@ import { Colors } from '../constants/Colors';
 import { PhoneIcon, BrainIcon } from '../components/Icons';
 import { ApiService } from '../services/api';
 import { socketService } from '../services/socket';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DialerScreenProps {
   navigation: any;
@@ -23,21 +24,24 @@ interface DialerScreenProps {
 export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCall }) => {
   const [number, setNumber] = useState('');
   const [isConnected, setIsConnected] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
-    socketService.connect();
-    setIsConnected(socketService.isConnected());
+    if (user) {
+      socketService.connect();
+      setIsConnected(socketService.isConnected());
 
-    const handleCallInitiated = (data: any) => {
-      Alert.alert('Call Initiated', `Calling ${data.to}...`);
-    };
+      const handleCallInitiated = (data: any) => {
+        Alert.alert('Call Initiated', `Calling ${data.to}...`);
+      };
 
-    socketService.on('callInitiated', handleCallInitiated);
+      socketService.on('callInitiated', handleCallInitiated);
 
-    return () => {
-      socketService.off('callInitiated', handleCallInitiated);
-    };
-  }, []);
+      return () => {
+        socketService.off('callInitiated', handleCallInitiated);
+      };
+    }
+  }, [user]);
 
   const handleNumberPress = (digit: string) => {
     setNumber(prev => prev + digit);
@@ -48,16 +52,25 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
   };
 
   const handleCall = async () => {
-    if (!number.trim()) return;
+    if (!number.trim()) {
+      Alert.alert('Error', 'Please enter a phone number');
+      return;
+    }
+
+    if (!user) {
+      Alert.alert('Error', 'Please log in to make calls');
+      return;
+    }
 
     try {
-      // Call the API service to initiate the call on the backend
-      await ApiService.makeCall(number);
+      console.log('🔄 Making call with authenticated user:', user.id);
+      // Use the authenticated API service method
+      await ApiService.makeCallForCurrentUser(number.trim());
       // Also trigger the app-level call handling for UI state management
-      onMakeCall(number);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to make call');
+      onMakeCall(number.trim());
+    } catch (error: any) {
       console.error('Call error:', error);
+      Alert.alert('Error', error.message || 'Failed to make call');
     }
   };
 
@@ -190,33 +203,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 16,
-  },
-  statusBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  statusTime: {
-    color: Colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statusRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  connectionDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  batteryText: {
-    color: Colors.textPrimary,
-    fontSize: 14,
-    fontWeight: '600',
   },
   header: {
     paddingVertical: 8,
