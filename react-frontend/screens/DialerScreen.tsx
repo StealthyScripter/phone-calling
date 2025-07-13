@@ -15,6 +15,7 @@ import { PhoneIcon, BrainIcon, PlusIcon } from '../components/Icons';
 import { ApiService } from '../services/api';
 import { socketService } from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
+import { ActivityIndicator } from 'react-native';
 
 interface DialerScreenProps {
   navigation: any;
@@ -24,6 +25,7 @@ interface DialerScreenProps {
 export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCall }) => {
   const [number, setNumber] = useState('');
   const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -62,15 +64,21 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
       return;
     }
 
+    setIsLoading(true);
     try {
       console.log('🔄 Making call with authenticated user:', user.id);
       // Use the authenticated API service method
-      await ApiService.makeCallForCurrentUser(number.trim());
-      // Also trigger the app-level call handling for UI state management
-      onMakeCall(number.trim());
+      const response = await ApiService.makeCallForCurrentUser(number.trim());
+
+      if (response.success && response.callSid) {
+        onMakeCall(number.trim());
+        setNumber('');
+      }
     } catch (error: any) {
       console.error('Call error:', error);
       Alert.alert('Error', error.message || 'Failed to make call');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -188,15 +196,19 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
             <TouchableOpacity 
               style={[
                 styles.callButton, 
-                !number && styles.callButtonDisabled
+                (!number || isLoading) && styles.callButtonDisabled
               ]}
               onPress={handleCall}
-              disabled={!number}
+              disabled={!number || isLoading}
             >
               <LinearGradient
-                colors={!number ? [Colors.cardBackground, Colors.cardBackground] : ['#00ff44', '#00cc88']}
-                style={styles.callButtonGradient}
+                colors={(!number || isLoading) ? [Colors.cardBackground, Colors.cardBackground] : ['#00ff44', '#00cc88']} style={styles.callButtonGradient}
               >
+              {isLoading ? (
+                <ActivityIndicator size="small" color={Colors.textSecondary} />
+              ) : (
+                <PhoneIcon size={24} color={(!number || isLoading) ? Colors.textSecondary : '#000000'} />
+              )}
                 <PhoneIcon size={24} color={!number ? Colors.textSecondary : '#000000'} />
               </LinearGradient>
             </TouchableOpacity>

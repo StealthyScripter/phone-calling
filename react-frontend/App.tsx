@@ -100,7 +100,6 @@ const AppContent = () => {
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [incomingCall, setIncomingCall] = useState<Call | null>(null);
   const [navigationRef, setNavigationRef] = useState<any>(null);
-  const [isUserEndingCall, setIsUserEndingCall] = useState(false);
 
   // Set auth token when available
   useEffect(() => {
@@ -162,51 +161,26 @@ const AppContent = () => {
     const handleCallInitiated = (data: any) => {
       console.log('Call initiated:', data);
       
-      setActiveCall(prevCall => {
-        if (prevCall) {
-          const updatedCall: Call = {
-            ...prevCall,
-            call_sid: data.callSid || data.call_sid || '',
-            status: 'initiated',
-            from_number: data.from || prevCall.from_number,
-            to_number: data.to || prevCall.to_number,
-          };
-          console.log('🟢 Updated activeCall with real call_sid:', updatedCall.call_sid);
-          
-          setTimeout(() => {
-            if (navigationRef) {
-              navigationRef.navigate('ActiveCall', { call: updatedCall });
-            }
-          }, 100);
-          
-          return updatedCall;
-        } else {
-          const newActiveCall: Call = {
-            id: data.id || Date.now(),
-            call_sid: data.callSid || data.call_sid || '',
-            user_id: String(user.id),
-            direction: 'outgoing',
-            from_number: data.from || '',
-            to_number: data.to || data.phone_number || '',
-            contact_name: data.contact_name || 'Unknown',
-            phone_number: data.to || data.phone_number || '',
-            status: 'initiated',
-            duration: 0,
-            start_time: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          console.log('🟢 Created new activeCall with call_sid:', newActiveCall.call_sid);
-          
-          setTimeout(() => {
-            if (navigationRef) {
-              navigationRef.navigate('ActiveCall', { call: newActiveCall });
-            }
-          }, 100);
-          
-          return newActiveCall;
-        }
-      });
+      const newActiveCall: Call = {
+        id: data.id || Date.now(),
+        call_sid: data.callSid || data.call_sid || '',
+        user_id: String(user.id),
+        direction: 'outgoing',
+        from_number: data.from || '',
+        to_number: data.to || data.phone_number || '',
+        contact_name: data.contact_name || 'Unknown',
+        phone_number: data.to || data.phone_number || '',
+        status: 'initiated',
+        duration: 0,
+        start_time: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+    };
+      setActiveCall(newActiveCall);
+
+      if (navigationRef) {
+        navigationRef.navigate('ActiveCall', {call: newActiveCall});
+      }
     };
 
     const handleCallStatusUpdate = (data: any) => {
@@ -221,26 +195,11 @@ const AppContent = () => {
 
     const handleCallEnded = (data: any) => {
       console.log('🟡 SOCKET EVENT: Call ended received:', data);
-
-      // setIsUserEndingCall(prev => {
-      //   if (!prev) {
-      //     setActiveCall(null);
-      //     setIncomingCall(null);
-      //     if (navigationRef) {
-      //       navigationRef.navigate('Main');
-      //     }
-      //   }
-      //   return prev;
-      // });
-       // Only navigate if user didn't already initiate the end
-      if (!isUserEndingCall) {
-        setActiveCall(null);
-        setIncomingCall(null);
-        if (navigationRef) {
-          setTimeout(() => {
-            navigationRef.navigate('Main');
-          }, 100);
-        }
+  
+      setActiveCall(null);
+      setIncomingCall(null);
+      if (navigationRef) {
+        navigationRef.navigate('Main');
       }
     };
 
@@ -310,26 +269,21 @@ const AppContent = () => {
 
   const handleCallEnd = async () => {
     console.log('🟢 USER INITIATED: handleCallEnd called');
-    setIsUserEndingCall(true);
     
     try {
-      if (activeCall?.call_sid && !activeCall.call_sid.startsWith('temp_')) {
-      console.log('🟢 About to call hangupCall with:', activeCall.call_sid);
-      await ApiService.hangupCall(activeCall.call_sid);
-      console.log('🟢 Call end signal sent to backend');
-    }
-      setActiveCall(null);
-      if (navigationRef && !isUserEndingCall) {
-      navigationRef.navigate('Main');
-    }
+      if (activeCall?.call_sid) {
+        console.log('🟢 About to call hangupCall with:', activeCall.call_sid);
+        await ApiService.hangupCall(activeCall.call_sid);
+        console.log('🟢 Call end signal sent to backend');
+      }
     } catch (error) {
       console.error('End call error:', error);
-      setActiveCall(null);
-      if (navigationRef) {
-      navigationRef.navigate('Main');
     }
-    } finally {
-      setTimeout(() => setIsUserEndingCall(false), 1000);
+    
+    // Always clean up and navigate
+    setActiveCall(null);
+    if (navigationRef) {
+      navigationRef.navigate('Main');
     }
   };
 
@@ -376,26 +330,34 @@ const AppContent = () => {
       return;
     }
     
-    const newCall: Call = {
-      id: Date.now(),
-      call_sid: `temp_${Date.now()}`,
-      user_id: String(user.id),
-      direction: 'outgoing',
-      from_number: user.phoneNumber || '',
-      to_number: phoneNumber,
-      contact_name: contactName || 'Unknown',
-      phone_number: phoneNumber,
-      status: 'initiating',
-      duration: 0,
-      start_time: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    
-    setActiveCall(newCall);
-    
-    if (navigationRef) {
-      navigationRef.navigate('ActiveCall', { call: newCall });
+      try {
+      const response = await ApiService.makeCallForCurrentUser(phoneNumber, contactName);
+      
+      if (response.success && response.callSid) {
+        const newCall: Call = {
+          id: Date.now(),
+          call_sid: response.callSid,
+          user_id: String(user.id),
+          direction: 'outgoing',
+          from_number: user.phoneNumber || '',
+          to_number: phoneNumber,
+          contact_name: contactName || 'Unknown',
+          phone_number: phoneNumber,
+          status: 'initiated',
+          duration: 0,
+          start_time: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        
+        setActiveCall(newCall);
+        
+        if (navigationRef) {
+          navigationRef.navigate('ActiveCall', { call: newCall });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to initiate call:', error);
     }
   };
 

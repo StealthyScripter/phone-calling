@@ -41,9 +41,6 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   const [isOnHold, setIsOnHold] = useState(false);
-  const [isNavigating, setIsNavigating] = useState(false);
-  const callSidRef = useRef<string | null>(call?.call_sid || null);
-
 
   const handleMute = async () => {
   try {
@@ -65,15 +62,10 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
     console.log(`Call ${isOnHold ? 'resumed' : 'on hold'}`);
   };
 
- // react-frontend/screens/ActiveCallScreen.tsx
-
-useEffect(() => {
+  useEffect(() => {
   if (!call) return;
 
-  //Call sid for stable reference
-  callSidRef.current = call.call_sid;
-  
-  // Set initial status based on call direction and current status
+  // Set initial status based on call direction
   if (call.direction === 'outgoing') {
     setCallStatus(call.status === 'initiated' ? 'Calling...' : call.status);
   } else {
@@ -82,87 +74,57 @@ useEffect(() => {
     setIsConnected(true);
     startTimer();
   }
+}, [call]);
 
-  // Listen for real Twilio webhook events via WebSocket
-  const handleCallStatusUpdate = (data: any) => {
-    // Match by call SID - handle both temp and real SIDs
-    const isMatchingCall = data.callSid === callSidRef.current || data.call_sid === callSidRef.current ||
-    (callSidRef.current?.startsWith('temp_') && data.callSid);
-
-    if (isMatchingCall) {
-      console.log('📱 Status update for active call:', data.status);
-
-    // Update stored call SID if we get a real one
-    if (data.callSid && callSidRef.current?.startsWith('temp_')) {
-      callSidRef.current = data.callSid;
-      console.log('🔄 Updated call SID from temp to real:', data.callSid);
-    }
-      
-    // Map Twilio statuses to user-friendly messages
-      const statusMap: { [key: string]: string } = {
-        'initiated': 'Calling...',
-        'ringing': 'Ringing...',
-        'in-progress': 'Connected',
-        'answered': 'Connected',
-        'completed': 'Call Ended',
-        'failed': 'Call Failed',
-        'busy': 'Busy',
-        'no-answer': 'No Answer'
-      };
-
-      const newStatus = statusMap[data.status] || data.status;
-      setCallStatus(newStatus);
-
-      // Start timer when call is actually connected (from Twilio)
-      if ((data.status === 'answered' || data.status === 'in-progress') && !isRunning) {
-        console.log('🟢 Call connected - starting timer');
-        setIsConnected(true);
-        startTimer();
-      }
-
-      // Stop timer and handle call end
-      if (['completed', 'failed', 'busy', 'no-answer'].includes(data.status)) {
-        console.log('🔴 Call ended - stopping timer');
-        stopTimer();
-        setIsConnected(false);
-        
-        // Delay navigation to show end status briefly
-        setTimeout(() => {
-          if (!isNavigating) {
-            setIsNavigating(true);
-            // Navigation will be handled by parent component via WebSocket
-          }
-        }, 2000);
-      }
-    }
+// Simple status update based on call prop changes
+useEffect(() => {
+  if (!call) return;
+  
+  const statusMap: { [key: string]: string } = {
+    'initiated': 'Calling...',
+    'ringing': 'Ringing...',
+    'in-progress': 'Connected',
+    'answered': 'Connected',
+    'completed': 'Call Ended',
+    'failed': 'Call Failed',
+    'busy': 'Busy',
+    'no-answer': 'No Answer'
   };
 
-  // Subscribe to real-time events
-  socketService.on('callStatusUpdate', handleCallStatusUpdate);
+  const newStatus = statusMap[call.status] || call.status;
+  setCallStatus(newStatus);
 
-  return () => {
-    socketService.off('callStatusUpdate', handleCallStatusUpdate);
-  };
-}, [call?.call_sid, isRunning, startTimer, isNavigating]);
-
-  useEffect(() => {
-  if (call?.call_sid) {
-    const handleStatusUpdate = (data: any) => {
-      if (data.call_sid === call.call_sid) {
-        setCallStatus(data.status);
-        if (data.status === 'connected') {
-          setIsConnected(true);
-        }
-      }
-    };
-    
-    socketService.on('callStatusUpdate', handleStatusUpdate);
-    
-    return () => {
-      socketService.off('callStatusUpdate', handleStatusUpdate);
-    };
+  // Start timer when call is connected
+  if ((call.status === 'answered' || call.status === 'in-progress') && !isRunning) {
+    setIsConnected(true);
+    startTimer();
   }
-}, [call?.call_sid]);
+
+  // Stop timer when call ends
+  if (['completed', 'failed', 'busy', 'no-answer'].includes(call.status)) {
+    stopTimer();
+    setIsConnected(false);
+  }
+}, [call.status, isRunning, startTimer, stopTimer]);
+
+//   useEffect(() => {
+//   if (call?.call_sid) {
+//     const handleStatusUpdate = (data: any) => {
+//       if (data.call_sid === call.call_sid) {
+//         setCallStatus(data.status);
+//         if (data.status === 'connected') {
+//           setIsConnected(true);
+//         }
+//       }
+//     };
+    
+//     socketService.on('callStatusUpdate', handleStatusUpdate);
+    
+//     return () => {
+//       socketService.off('callStatusUpdate', handleStatusUpdate);
+//     };
+//   }
+// }, [call?.call_sid]);
 
   const getContactInitials = (name: string) => {
     return name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'UK';

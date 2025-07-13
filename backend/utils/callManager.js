@@ -10,7 +10,6 @@ class CallManager {
         this.redisClient = null;
         this.CALL_PREFIX = 'call:';
         this.PENDING_PREFIX = 'pending:';
-        this.SID_MAPPING_PREFIX = 'sid_map:';
         this.CALL_TTL = 3600; // 1 hour TTL for call data
     }
 
@@ -284,45 +283,6 @@ class CallManager {
                 }
             }
         }
-    }
-    /**
-     * Map temporary SID to real Twilio SID
-     * @param {string} tempSid - Temporary SID from frontend
-     * @param {string} realSid - Real Twilio SID
-     */
-    async mapSid(tempSid, realSid) {
-    try {
-        if (this.redisClient) {
-        await this.redisClient.setEx(
-            `${this.SID_MAPPING_PREFIX}${tempSid}`,
-            this.CALL_TTL,
-            realSid
-        );
-        } else {
-        this.fallbackStorage.set(`sid_map_${tempSid}`, realSid);
-        }
-        console.log(`🔗 Mapped SID: ${tempSid} -> ${realSid}`);
-    } catch (error) {
-        console.error('Error mapping SID:', error);
-    }
-    }
-
-    /**
-     * Get real SID from temporary SID
-     * @param {string} tempSid - Temporary SID
-     * @returns {string|null} Real SID or null
-     */
-    async getRealSid(tempSid) {
-    try {
-        if (this.redisClient) {
-        return await this.redisClient.get(`${this.SID_MAPPING_PREFIX}${tempSid}`);
-        } else {
-        return this.fallbackStorage.get(`sid_map_${tempSid}`) || null;
-        }
-    } catch (error) {
-        console.error('Error getting real SID:', error);
-        return null;
-    }
     }
 
     /**
