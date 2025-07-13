@@ -93,6 +93,7 @@ backend/data/*.db-journal
 backend/logs/*.log
 backend/recordings/
 backend/media/
+docs/
 
 # React Native / Expo
 react-frontend/.expo/

@@ -110,6 +110,12 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopWidth: 1,
     borderTopColor: Colors.borderColor,
+    backgroundColor: '#17203b',
+    shadowColor: '#101010',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
   },
   tabBarContent: {
     flexDirection: 'row',
@@ -117,6 +123,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingBottom: 32,
     paddingHorizontal: 16,
+    backgroundColor: '#17203b',
   },
   tabItem: {
     flex: 1,

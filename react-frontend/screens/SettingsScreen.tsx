@@ -45,14 +45,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     },
     {
       title: 'Call Recording',
-      subtitle: 'Record calls for later',
+      subtitle: 'Record calls',
       action: () => setCallRecording(!callRecording),
       type: 'toggle',
       value: callRecording
     },
     {
-      title: 'Smart Notifications',
-      subtitle: 'AI-powered call alerts',
+      title: 'Notifications',
+      subtitle: 'Turn on Notifications',
       action: () => setSmartNotifications(!smartNotifications),
       type: 'toggle',
       value: smartNotifications

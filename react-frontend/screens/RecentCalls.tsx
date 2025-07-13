@@ -129,15 +129,59 @@ export const RecentCallsScreen: React.FC<RecentCallsScreenProps> = ({
   const getCallIcon = (direction: string): string => {
     return direction === 'outgoing' ? '↗' : '↙';
   };
-
+  
   const getCallTypeText = (direction: string, status: string): string => {
     try {
-      if (direction === 'outgoing') {
-        return 'Outgoing';
-      } else if (status === 'missed') {
-        return 'Missed';
-      } else {
-        return 'Incoming';
+      // Handle outgoing calls
+      if (direction === 'outgoing' || direction === 'outbound') {
+        switch (status.toLowerCase()) {
+          case 'completed':
+          case 'answered':
+            return 'Outgoing';
+          case 'failed':
+          case 'busy':
+          case 'no-answer':
+          case 'canceled':
+            return 'Outgoing (Failed)';
+          default:
+            return 'Outgoing';
+        }
+      }
+      
+      // Handle incoming calls
+      if (direction === 'incoming' || direction === 'inbound') {
+        switch (status.toLowerCase()) {
+          case 'completed':
+          case 'answered':
+          case 'accepted':
+            return 'Incoming';
+          case 'missed':
+          case 'no-answer':
+          case 'rejected':
+            return 'Missed';
+          case 'failed':
+            return 'Incoming (Failed)';
+          case 'busy':
+            return 'Missed (Busy)';
+          default:
+            return 'Incoming';
+        }
+      }
+      
+      // Fallback for unknown direction but known status
+      switch (status.toLowerCase()) {
+        case 'missed':
+        case 'no-answer':
+          return 'Missed';
+        case 'failed':
+          return 'Failed';
+        case 'busy':
+          return 'Busy';
+        case 'completed':
+        case 'answered':
+          return 'Call';
+        default:
+          return 'Call';
       }
     } catch {
       return 'Call';
@@ -400,7 +444,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   callsListContent: {
-    paddingBottom: 100,
+    paddingBottom: 120,
     paddingTop: 16,
   },
   emptyListContent: {

@@ -184,17 +184,6 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
           <View style={styles.actions}>
             <TouchableOpacity 
               style={[
-                styles.addContactButton,
-                !number && styles.addContactButtonDisabled
-              ]}
-              onPress={handleAddContact}
-              disabled={!number}
-            >
-              <PlusIcon size={20} color={!number ? Colors.textSecondary : Colors.textPrimary} />
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[
                 styles.callButton, 
                 (!number || isLoading) && styles.callButtonDisabled
               ]}
@@ -209,7 +198,6 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
               ) : (
                 <PhoneIcon size={24} color={(!number || isLoading) ? Colors.textSecondary : '#000000'} />
               )}
-                <PhoneIcon size={24} color={!number ? Colors.textSecondary : '#000000'} />
               </LinearGradient>
             </TouchableOpacity>
 
@@ -379,7 +367,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 20,
     paddingHorizontal: 20,
-    marginBottom: 80, // Space for bottom navigation
+    marginBottom: 140,
     gap: 20,
   },
   addContactButton: {
