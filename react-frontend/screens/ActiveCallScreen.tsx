@@ -63,17 +63,27 @@ export const ActiveCallScreen: React.FC<ActiveCallScreenProps> = ({
   };
 
   useEffect(() => {
-  if (!call) return;
+    if (!call || !['initiated', 'ringing'].includes(call.status)) return;
 
-  // Set initial status based on call direction
-  if (call.direction === 'outgoing') {
-    setCallStatus(call.status === 'initiated' ? 'Calling...' : call.status);
-  } else {
-    // For incoming calls that are accepted
-    setCallStatus('Connected');
-    setIsConnected(true);
-    startTimer();
-  }
+    // Set initial status based on call direction
+    if (call.direction === 'outgoing') {
+      setCallStatus(call.status === 'initiated' ? 'Calling...' : call.status);
+    } else {
+      // For incoming calls that are accepted
+      setCallStatus('Connected');
+      setIsConnected(true);
+      startTimer();
+    }
+
+    // Set a timeout for unanswered calls (30 seconds)
+  const timeoutId = setTimeout(() => {
+    if (['initiated', 'ringing'].includes(call.status)) {
+      console.log('Call timeout - ending call due to no answer');
+      onCallEnd(); // End the call due to timeout
+    }
+  }, 30000); // 30 seconds
+
+  return () => clearTimeout(timeoutId);
 }, [call]);
 
 // Simple status update based on call prop changes
@@ -104,27 +114,12 @@ useEffect(() => {
   if (['completed', 'failed', 'busy', 'no-answer'].includes(call.status)) {
     stopTimer();
     setIsConnected(false);
+
+    setTimeout(() => {
+      onCallEnd();
+    }, 2000);
   }
 }, [call.status, isRunning, startTimer, stopTimer]);
-
-//   useEffect(() => {
-//   if (call?.call_sid) {
-//     const handleStatusUpdate = (data: any) => {
-//       if (data.call_sid === call.call_sid) {
-//         setCallStatus(data.status);
-//         if (data.status === 'connected') {
-//           setIsConnected(true);
-//         }
-//       }
-//     };
-    
-//     socketService.on('callStatusUpdate', handleStatusUpdate);
-    
-//     return () => {
-//       socketService.off('callStatusUpdate', handleStatusUpdate);
-//     };
-//   }
-// }, [call?.call_sid]);
 
   const getContactInitials = (name: string) => {
     return name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'UK';

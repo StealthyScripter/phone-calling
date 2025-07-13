@@ -191,6 +191,16 @@ const AppContent = () => {
         }
         return prevCall;
       });
+      
+      // Handle terminal states that should end the call
+      if (['failed', 'busy', 'no-answer', 'canceled'].includes(data.status)) {
+        setTimeout(() => {
+          setActiveCall(null);
+          if (navigationRef) {
+            navigationRef.navigate('Main');
+          }
+        }, 2000); // Brief delay to show status
+      }
     };
 
     const handleCallEnded = (data: any) => {

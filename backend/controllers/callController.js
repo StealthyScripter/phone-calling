@@ -240,12 +240,17 @@ const hangupRealCall = async (callSid, user_id, res) => {
         logCall('terminated', callSid, { reason: 'user_initiated', user_id });
 
         // Emit real-time event
-        if (global.io) {
-            global.io.emit('callEnded', {
-                callSid: callSid,
-                reason: 'user_initiated',
-                user_id: user_id
-            });
+        if (['completed', 'failed', 'canceled', 'busy', 'no-answer'].includes(CallStatus)) {
+            if (global.io) {
+                global.io.emit('callEnded', {
+                callSid: CallSid,
+                status: CallStatus,
+                duration: CallDuration,
+                from: From,
+                to: To,
+                reason: 'natural_end'
+                });
+            }
         }
 
         return res.json({

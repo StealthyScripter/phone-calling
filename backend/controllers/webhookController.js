@@ -275,7 +275,7 @@ const handleStatusUpdate = async (req, res) => {
         }
 
         // Emit real-time status update
-        if (global.io && ['ringing','answered', 'completed', 'failed', 'busy', 'no-answer'].includes(CallStatus)) {
+        if (global.io) {
             global.io.emit('callStatusUpdate', {
                 callSid: CallSid,
                 status: CallStatus,
