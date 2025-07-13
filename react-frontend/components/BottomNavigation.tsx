@@ -2,12 +2,7 @@ import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Colors } from '../constants/Colors';
 import { PhoneIcon, ClockIcon, UsersIcon, SettingsIcon } from './Icons';
-
-interface TabBarProps {
-  state: any;
-  descriptors: any;
-  navigation: any;
-}
+import { TabBarProps } from '../types/index';
 
 export const ModernTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation }) => {
   const getTabIcon = (routeName: string, focused: boolean) => {

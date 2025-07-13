@@ -1,13 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Colors } from '../constants/Colors';
-
-interface ButtonProps {
-  title: string;
-  onPress: () => void;
-  variant?: 'primary' | 'secondary';
-  disabled?: boolean;
-}
+import { ButtonProps } from '../types/index';
 
 export const Button: React.FC<ButtonProps> = ({ 
   title, 

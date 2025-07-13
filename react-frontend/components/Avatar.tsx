@@ -1,11 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors } from '../constants/Colors';
-
-interface AvatarProps {
-  name: string;
-  size?: number;
-}
+import { AvatarProps } from '../types/index';
 
 export const Avatar: React.FC<AvatarProps> = ({ name, size = 50 }) => {
   const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();

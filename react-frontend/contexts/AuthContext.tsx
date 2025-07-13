@@ -1,28 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-interface User {
-  id: string | number;
-  name: string; // Required field
-  email: string;
-  username: string;
-  firstName?: string;
-  lastName?: string;
-  phoneNumber?: string;
-  role: string;
-  isActive?: boolean;
-  lastLogin?: string;
-}
-
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  isLoading: boolean;
-  login: (emailOrUsername: string, password: string) => Promise<void>;
-  register: (email: string, username: string, password: string, name?: string, firstName?: string, lastName?: string) => Promise<void>;
-  logout: () => Promise<void>;
-  updateProfile: (data: Partial<User>) => Promise<void>;
-}
+import { User, AuthContextType } from '../types';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 

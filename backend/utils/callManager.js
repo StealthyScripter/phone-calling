@@ -62,7 +62,7 @@ class CallManager {
                     JSON.stringify(callInfo)
                 );
             } else {
-                // Fallback to memory
+                // Fallto memory
                 this.fallbackStorage.set(callSid, callInfo);
             }
             

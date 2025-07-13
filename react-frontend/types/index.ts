@@ -14,6 +14,9 @@ export interface User {
   updated_at?: string;
   createdAt?: string;
   updatedAt?: string;
+  avatarUrl?: string;
+  avatar_url?: string;
+  preferences?: any;
 }
 
 export interface Contact {
@@ -100,3 +103,31 @@ export type NavigationParamList = {
   Login: undefined;
   Register: undefined;
 };
+
+export interface AuthContextType {
+  user: User | null;
+  token: string | null;
+  isLoading: boolean;
+  login: (emailOrUsername: string, password: string) => Promise<void>;
+  register: (email: string, username: string, password: string, name?: string, firstName?: string, lastName?: string) => Promise<void>;
+  logout: () => Promise<void>;
+  updateProfile: (data: Partial<User>) => Promise<void>;
+}
+
+export interface AvatarProps {
+  name: string;
+  size?: number;
+}
+
+export interface TabBarProps {
+  state: any;
+  descriptors: any;
+  navigation: any;
+}
+
+export interface ButtonProps {
+  title: string;
+  onPress: () => void;
+  variant?: 'primary' | 'secondary';
+  disabled?: boolean;
+}
