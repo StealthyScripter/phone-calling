@@ -13,6 +13,7 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { ActiveCallScreen } from './screens/ActiveCallScreen';
 import { IncomingCallScreen } from './screens/IncomingCallScreen';
+import { AddContactScreen } from './screens/AddContactScreen';
 import { ModernTabBar } from './components/BottomNavigation';
 import { socketService } from './services/socket';
 import { Call } from './types';
@@ -409,6 +410,15 @@ const AppContent = () => {
         <Stack.Screen 
           name="Profile"
           component={ProfileScreen}
+          options={{
+            presentation: 'modal',
+            gestureDirection: 'vertical',
+          }}
+        />
+
+        <Stack.Screen 
+          name="AddContact"
+          component={AddContactScreen}
           options={{
             presentation: 'modal',
             gestureDirection: 'vertical',

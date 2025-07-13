@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../constants/Colors';
-import { PhoneIcon, BrainIcon } from '../components/Icons';
+import { PhoneIcon, BrainIcon, PlusIcon } from '../components/Icons';
 import { ApiService } from '../services/api';
 import { socketService } from '../services/socket';
 import { useAuth } from '../contexts/AuthContext';
@@ -72,6 +72,16 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
       console.error('Call error:', error);
       Alert.alert('Error', error.message || 'Failed to make call');
     }
+  };
+
+  const handleAddContact = () => {
+    if (!number.trim()) {
+      Alert.alert('No Number', 'Please enter a phone number first');
+      return;
+    }
+
+    // Navigate to AddContact screen with the current number pre-filled
+    navigation.navigate('AddContact', { phoneNumber: number.trim() });
   };
 
   const renderKeypadButton = (digit: string, letters?: string) => (
@@ -164,7 +174,16 @@ export const DialerScreen: React.FC<DialerScreenProps> = ({ navigation, onMakeCa
 
           {/* Actions */}
           <View style={styles.actions}>
-            <View style={styles.actionSpacer} />
+            <TouchableOpacity 
+              style={[
+                styles.addContactButton,
+                !number && styles.addContactButtonDisabled
+              ]}
+              onPress={handleAddContact}
+              disabled={!number}
+            >
+              <PlusIcon size={20} color={!number ? Colors.textSecondary : Colors.textPrimary} />
+            </TouchableOpacity>
             
             <TouchableOpacity 
               style={[
@@ -349,9 +368,23 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     paddingHorizontal: 20,
     marginBottom: 80, // Space for bottom navigation
+    gap: 20,
+  },
+  addContactButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.cardBackground,
+    borderWidth: 1,
+    borderColor: Colors.borderColor,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addContactButtonDisabled: {
+    opacity: 0.3,
   },
   actionSpacer: {
-    flex: 1,
+    width: 56, // Match the add contact button width for symmetry
   },
   callButton: {
     width: 72,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -17,6 +17,7 @@ import { PhoneIcon, PlusIcon, StarIcon, BatteryIcon } from '../components/Icons'
 import { Contact } from '../types';
 import { ApiService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 interface ContactsScreenProps {
   navigation: any;
@@ -30,14 +31,17 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const { user } = useAuth();
 
-  useEffect(() => {
-    if (user) {
-      loadContacts();
-    } else {
-      setContacts([]);
-      setLoading(false);
-    }
-  }, [user]);
+  // Reload contacts when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (user) {
+        loadContacts();
+      } else {
+        setContacts([]);
+        setLoading(false);
+      }
+    }, [user])
+  );
 
   const loadContacts = async () => {
     if (!user) {
@@ -97,12 +101,7 @@ export const ContactsScreen: React.FC<ContactsScreenProps> = ({ navigation, onMa
   };
 
   const handleAddContact = () => {
-    // For now, show an alert since AddContact screen doesn't exist
-    Alert.alert(
-      'Add Contact',
-      'Contact creation feature coming soon!\n\nFor now, you can add contacts through the backend API.',
-      [{ text: 'OK' }]
-    );
+    navigation.navigate('AddContact');
   };
 
   const getContactInitials = (name: string) => {

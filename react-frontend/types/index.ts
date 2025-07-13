@@ -94,7 +94,9 @@ export type NavigationParamList = {
   Settings: undefined;
   Profile: undefined;
   ContactDetail: { contact: Contact };
-  AddContact: undefined;
+  AddContact: { phoneNumber?: string };
   ActiveCall: { call: Call };
   IncomingCall: { call: Call };
+  Login: undefined;
+  Register: undefined;
 };
