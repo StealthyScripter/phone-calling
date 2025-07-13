@@ -245,6 +245,25 @@ const handleStatusUpdate = async (req, res) => {
         
         logWebhook('status_update', req.body);
 
+        // Check if this might be for a call with a temporary SID
+        const allCalls = await callManager.getAllCalls();
+        const matchingCall = allCalls.find(call => 
+        call.sid === CallSid || 
+        (call.sid && call.sid.startsWith('temp_') && call.to === To && call.from === From)
+        );
+
+        if (matchingCall && matchingCall.sid !== CallSid && matchingCall.sid.startsWith('temp_')) {
+        console.log(`🔄 Updating temp SID ${matchingCall.sid} to real SID ${CallSid}`);
+        await callManager.mapSid(matchingCall.sid, CallSid);
+        
+        // Update the call with real SID
+        const callData = await callManager.getCall(matchingCall.sid);
+        if (callData) {
+            await callManager.removeCall(matchingCall.sid);
+            await callManager.addCall(CallSid, { ...callData, sid: CallSid });
+        }
+        }
+
         // Update call status in storage
         const updateData = { 
             status: CallStatus,

@@ -221,16 +221,27 @@ const AppContent = () => {
 
     const handleCallEnded = (data: any) => {
       console.log('🟡 SOCKET EVENT: Call ended received:', data);
-      setIsUserEndingCall(prev => {
-        if (!prev) {
-          setActiveCall(null);
-          setIncomingCall(null);
-          if (navigationRef) {
+
+      // setIsUserEndingCall(prev => {
+      //   if (!prev) {
+      //     setActiveCall(null);
+      //     setIncomingCall(null);
+      //     if (navigationRef) {
+      //       navigationRef.navigate('Main');
+      //     }
+      //   }
+      //   return prev;
+      // });
+       // Only navigate if user didn't already initiate the end
+      if (!isUserEndingCall) {
+        setActiveCall(null);
+        setIncomingCall(null);
+        if (navigationRef) {
+          setTimeout(() => {
             navigationRef.navigate('Main');
-          }
+          }, 100);
         }
-        return prev;
-      });
+      }
     };
 
     const handleCallAccepted = (data: any) => {
@@ -302,19 +313,23 @@ const AppContent = () => {
     setIsUserEndingCall(true);
     
     try {
-      if (activeCall?.call_sid) {
-        console.log('🟢 About to call hangupCall with:', activeCall.call_sid);
-        await ApiService.hangupCall(activeCall.call_sid);
-        console.log('🟢 Call end signal sent to backend');
-      }
+      if (activeCall?.call_sid && !activeCall.call_sid.startsWith('temp_')) {
+      console.log('🟢 About to call hangupCall with:', activeCall.call_sid);
+      await ApiService.hangupCall(activeCall.call_sid);
+      console.log('🟢 Call end signal sent to backend');
+    }
       setActiveCall(null);
-      navigationRef?.navigate('Main');
+      if (navigationRef && !isUserEndingCall) {
+      navigationRef.navigate('Main');
+    }
     } catch (error) {
       console.error('End call error:', error);
       setActiveCall(null);
-      navigationRef?.navigate('Main');
+      if (navigationRef) {
+      navigationRef.navigate('Main');
+    }
     } finally {
-      setIsUserEndingCall(false);
+      setTimeout(() => setIsUserEndingCall(false), 1000);
     }
   };
 
